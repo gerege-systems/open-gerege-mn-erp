@@ -15,7 +15,7 @@ export interface ThemePreferences {
 }
 
 const STORAGE_KEY = "gerege_theme";
-const defaults: ThemePreferences = { design: "original", mode: "light", accent: "cobalt", density: "comfortable" };
+const defaults: ThemePreferences = { design: "original", mode: "light", accent: "neutral", density: "comfortable" };
 
 interface ThemeContextValue extends ThemePreferences {
   resolvedMode: "light" | "dark";
