@@ -19,6 +19,7 @@ const iconMap: Record<string, React.ReactNode> = {
   "credit-card":<CreditCard className="w-5 h-5"/>, "file-text":<FileText className="w-5 h-5"/>, code:<Code2 className="w-5 h-5"/>, landmark:<Landmark className="w-5 h-5"/>,
 };
 const PUBLIC_ROUTES=["/","/login"];
+const APP_ORDER=["io.example.contacts","io.example.products","io.example.inventory","io.example.billing","io.example.documents","io.example.developer_portal","io.example.gov_services"];
 
 export default function Layout({children}:{children:React.ReactNode}){
   const [menus,setMenus]=useState<MenuItem[]>([]),[user,setUser]=useState<any>(null),[loading,setLoading]=useState(true);
@@ -34,7 +35,7 @@ export default function Layout({children}:{children:React.ReactNode}){
   const apps=useMemo<AppNav[]>(()=>{
     const groups=new Map<string,MenuItem[]>();
     menus.filter(m=>m.app_id).forEach(m=>groups.set(m.app_id!,[...(groups.get(m.app_id!)||[]),m]));
-    return [...groups.entries()].map(([id,items])=>{const sorted=items.sort((a,b)=>a.order-b.order),first=sorted.find(item=>item.path)!;return{id,name:first.label||first.app_name||id,icon:first.icon,path:first.path!,menus:sorted}});
+    return [...groups.entries()].map(([id,items])=>{const sorted=items.sort((a,b)=>a.order-b.order),first=sorted.find(item=>item.path)!;return{id,name:first.label||first.app_name||id,icon:first.icon,path:first.path!,menus:sorted}}).sort((a,b)=>{const ai=APP_ORDER.indexOf(a.id),bi=APP_ORDER.indexOf(b.id);return (ai<0?999:ai)-(bi<0?999:bi)||a.id.localeCompare(b.id)});
   },[menus]);
   const selected=apps.find(app=>app.menus.some(m=>m.path&&pathname.startsWith(m.path)))||null;
   const platformActive=!selected;
