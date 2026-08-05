@@ -26,7 +26,7 @@ export default function AppearanceSettingsPage() {
   const theme = useTheme();
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="w-full space-y-6">
       <div className="border-b border-slate-200 pb-4 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
