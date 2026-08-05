@@ -22,6 +22,8 @@ type PermissionDefinition struct {
 // MenuDefinition defines a navigation menu item for an app module.
 type MenuDefinition struct {
 	ID       string `json:"id"`
+	AppID    string `json:"app_id,omitempty"`
+	AppName  string `json:"app_name,omitempty"`
 	ParentID string `json:"parent_id,omitempty"`
 	Label    string `json:"label"`
 	Path     string `json:"path,omitempty"`

@@ -40,6 +40,8 @@ func GetTenantMenus(ctx context.Context, store InstalledAppStore, tenantID, loca
 	for _, mod := range appregistry.List() {
 		if enabledMap[mod.ID()] {
 			for _, item := range mod.Menus() {
+				item.AppID = mod.ID()
+				item.AppName = mod.Name()
 				// Resolve the label server-side so the client renders whatever
 				// the API hands it.
 				item.Label = item.LocalizedLabel(locale)

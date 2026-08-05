@@ -58,7 +58,7 @@ export const api = {
 
   getMe: () => fetcher<{ id: string; tenant_id: string; tenant_name: string; name: string; email: string; is_admin: boolean }>("/auth/me"),
 
-  getMenus: () => fetcher<Array<{ id: string; label: string; path: string; icon: string; order: number }>>("/menus"),
+  getMenus: () => fetcher<Array<{ id: string; app_id?: string; app_name?: string; parent_id?: string; label: string; path?: string; icon: string; order: number }>>("/menus"),
 
   // Store
   getStoreApps: () =>
