@@ -1,149 +1,61 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import { Sparkles, X, Send, Bot, User, ArrowRight } from "lucide-react";
+import { Sparkles, X, Send, Bot, User, Mic, Square, Volume2, Languages, Wrench } from "lucide-react";
 
-interface Message {
-  sender: "user" | "ai";
-  text: string;
-  actionable?: string[];
+interface Message { role: "user" | "model"; text: string; tools?: string[]; degraded?: boolean }
+
+function toBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onerror=()=>reject(r.error); r.onload=()=>resolve(String(r.result).split(",")[1] || ""); r.readAsDataURL(blob); });
 }
+function play(audio: { mime: string; data: string }) { new Audio(`data:${audio.mime};base64,${audio.data}`).play().catch(() => undefined); }
 
 export default function AICopilot() {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      sender: "ai",
-      text: "Hello! I am your ERP AI Copilot. Ask me about your inventory levels, products, contacts, or app store status.",
-      actionable: ["Check inventory status", "How many active products?", "Summary of contacts"],
-    },
-  ]);
+  const { t, locale } = useI18n();
+  const [open,setOpen]=useState(false), [prompt,setPrompt]=useState(""), [loading,setLoading]=useState(false);
+  const [mode,setMode]=useState<"chat"|"translate">("chat"), [target,setTarget]=useState("en"), [recording,setRecording]=useState(false);
+  const [messages,setMessages]=useState<Message[]>([{role:"model",text:"Сайн байна уу. ERP өгөгдөл, бараа материал, харилцагч болон системийн ажиллагааны талаар асуугаарай."}]);
+  const recorder=useRef<MediaRecorder|null>(null), chunks=useRef<Blob[]>([]), end=useRef<HTMLDivElement>(null);
+  useEffect(()=>{end.current?.scrollIntoView({behavior:"smooth"})},[messages,loading]);
 
-  const handleSend = async (textToSend?: string) => {
-    const queryText = textToSend || prompt;
-    if (!queryText.trim() || loading) return;
-
-    const userMsg: Message = { sender: "user", text: queryText };
-    setMessages((prev) => [...prev, userMsg]);
-    if (!textToSend) setPrompt("");
-    setLoading(true);
-
+  async function dispatch(text?: string, audio?: {mime:string;data:string}) {
+    const value=(text ?? prompt).trim(); if ((!value && !audio)||loading) return;
+    const shown=value || "🎙 Дуут мессеж"; const prior=messages.filter(m=>!m.degraded).slice(-20).map(({role,text})=>({role,text}));
+    setMessages(m=>[...m,{role:"user",text:shown}]); setPrompt(""); setLoading(true);
     try {
-      const res = await api.queryAICopilot(queryText);
-      const aiMsg: Message = {
-        sender: "ai",
-        text: res.answer,
-        actionable: res.actionable,
-      };
-      setMessages((prev) => [...prev, aiMsg]);
-    } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        { sender: "ai", text: "AI Assistant Error: " + (err.message || "Failed to process query") },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      if(mode==="translate") {
+        const r=await api.translateAI({text:value||undefined,audio,target_lang:target});
+        setMessages(m=>[...m,{role:"model",text:r.translated}]);
+      } else {
+        const r=await api.chatAI({prompt:value||undefined,audio,lang:locale,history:prior});
+        setMessages(m=>[...m,{role:"model",text:r.reply||r.answer,tools:r.steps?.map(s=>s.tool),degraded:r.degraded}]);
+      }
+    } catch(e) { setMessages(m=>[...m,{role:"model",text:e instanceof Error?e.message:"AI request failed",degraded:true}]); }
+    finally {setLoading(false)}
+  }
 
-  return (
-    <>
-      {/* Floating Toggle Button */}
-      <button
-        onClick={() => setOpen(!open)}
-        className="fixed bottom-6 right-6 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-medium p-3.5 rounded-full shadow-lg flex items-center space-x-2 transition-all transform hover:scale-105 z-50"
-      >
-        <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-        <span className="text-sm font-semibold pr-1">{t("copilotUI.aiCopilot")}</span>
-      </button>
+  async function toggleRecord() {
+    if(recording){recorder.current?.stop();return}
+    try {
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true}); const rec=new MediaRecorder(stream); chunks.current=[];
+      rec.ondataavailable=e=>{if(e.data.size)chunks.current.push(e.data)};
+      rec.onstop=async()=>{setRecording(false);stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks.current,{type:rec.mimeType});await dispatch(undefined,{mime:rec.mimeType.split(";")[0],data:await toBase64(blob)})};
+      recorder.current=rec;rec.start();setRecording(true);setTimeout(()=>{if(rec.state==="recording")rec.stop()},30000);
+    } catch {setMessages(m=>[...m,{role:"model",text:"Микрофонд хандах боломжгүй байна.",degraded:true}])}
+  }
 
-      {/* Drawer Panel */}
-      {open && (
-        <div className="fixed bottom-24 right-6 w-96 max-w-[calc(100vw-3rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden h-[500px]">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-4 text-white flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="p-1.5 bg-indigo-500/20 rounded-lg border border-indigo-400/30">
-                <Bot className="w-5 h-5 text-indigo-400" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm">{t("copilotUI.erpAiAssistant")}</h3>
-                <p className="text-[11px] text-slate-400">{t("copilotUI.poweredByGeminiAiEngine")}</p>
-              </div>
-            </div>
-            <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-white p-1">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+  async function speak(text:string){try{play(await api.speakAI(text.slice(0,2000)))}catch{/* response remains readable */}}
 
-          {/* Messages Area */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs">
-            {messages.map((m, idx) => (
-              <div key={idx} className={`flex ${m.sender === "user" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[85%] rounded-xl p-3 ${
-                    m.sender === "user"
-                      ? "bg-indigo-600 text-white rounded-br-none"
-                      : "bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200"
-                  }`}
-                >
-                  <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
-                  {m.actionable && m.actionable.length > 0 && (
-                    <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex flex-wrap gap-1.5">
-                      {m.actionable.map((act, i) => (
-                        <button
-                          key={i}
-                          onClick={() => handleSend(act)}
-                          className="bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-[10px] font-semibold py-1 px-2 rounded-lg flex items-center space-x-1 transition"
-                        >
-                          <span>{act}</span>
-                          <ArrowRight className="w-2.5 h-2.5" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-slate-100 text-slate-500 rounded-xl p-3 text-xs italic">
-                  AI is analyzing database context...
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Input Box */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSend();
-            }}
-            className="p-3 border-t border-slate-200 bg-slate-50 flex items-center space-x-2"
-          >
-            <input
-              type="text"
-              placeholder={t("copilotUI.askAiCopilot")}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-            />
-            <button
-              type="submit"
-              disabled={loading || !prompt.trim()}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white p-2 rounded-lg transition"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
-        </div>
-      )}
-    </>
-  );
+  return <>
+    <button onClick={()=>setOpen(v=>!v)} aria-label={t("copilotUI.aiCopilot")} className="fixed bottom-6 right-6 bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-3.5 rounded-full shadow-lg flex items-center gap-2 z-50"><Sparkles className="w-5 h-5 text-amber-300"/><span className="text-sm font-semibold">{t("copilotUI.aiCopilot")}</span></button>
+    {open&&<section className="fixed bottom-24 right-6 w-[420px] max-w-[calc(100vw-3rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden h-[600px]">
+      <header className="bg-gradient-to-r from-slate-900 to-indigo-950 p-4 text-white flex items-center justify-between"><div className="flex items-center gap-2"><Bot className="w-5 h-5 text-indigo-300"/><div><h3 className="font-bold text-sm">{t("copilotUI.erpAiAssistant")}</h3><p className="text-[11px] text-slate-400">Gemini · tenant-safe ERP tools</p></div></div><button onClick={()=>setOpen(false)}><X className="w-5 h-5"/></button></header>
+      <div className="flex border-b bg-slate-50 p-1 gap-1">{(["chat","translate"] as const).map(v=><button key={v} onClick={()=>setMode(v)} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold ${mode===v?"bg-white text-indigo-700 shadow-sm":"text-slate-500"}`}>{v==="chat"?<Bot className="inline w-4 h-4 mr-1"/>:<Languages className="inline w-4 h-4 mr-1"/>}{v==="chat"?"AI чат":"Орчуулга"}</button>)}</div>
+      {mode==="translate"&&<div className="px-3 py-2 border-b text-xs flex items-center gap-2"><span>Зорилтот хэл</span><select value={target} onChange={e=>setTarget(e.target.value)} className="border rounded px-2 py-1"><option value="mn">Монгол</option><option value="en">English</option><option value="ru">Русский</option><option value="zh">中文</option><option value="ko">한국어</option><option value="ja">日本語</option></select></div>}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs" aria-live="polite">{messages.map((m,i)=><div key={i} className={`flex gap-2 ${m.role==="user"?"justify-end":"justify-start"}`}>{m.role==="model"&&<Bot className="w-4 h-4 mt-2 text-indigo-500 shrink-0"/>}<div className={`max-w-[85%] rounded-xl p-3 ${m.role==="user"?"bg-indigo-600 text-white":"bg-slate-100 text-slate-800 border"}`}><p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>{m.role==="model"&&!m.degraded&&<button onClick={()=>speak(m.text)} className="mt-2 text-indigo-600" title="Сонсох"><Volume2 className="w-4 h-4"/></button>}{m.tools?.length?<p className="mt-2 text-[10px] text-slate-500 flex gap-1"><Wrench className="w-3 h-3"/>{m.tools.join(", ")}</p>:null}</div>{m.role==="user"&&<User className="w-4 h-4 mt-2 text-slate-400 shrink-0"/>}</div>)}{loading&&<div className="text-slate-500 animate-pulse">AI боловсруулж байна…</div>}<div ref={end}/></div>
+      <form onSubmit={e=>{e.preventDefault();void dispatch()}} className="p-3 border-t bg-slate-50 flex items-center gap-2"><button type="button" onClick={()=>void toggleRecord()} disabled={loading} className={`p-2 rounded-lg ${recording?"bg-red-600 text-white":"border bg-white text-slate-600"}`}>{recording?<Square className="w-4 h-4"/>:<Mic className="w-4 h-4"/>}</button><input value={prompt} onChange={e=>setPrompt(e.target.value)} maxLength={4000} placeholder={mode==="chat"?t("copilotUI.askAiCopilot"):"Орчуулах текст…"} className="flex-1 px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/><button disabled={loading||(!prompt.trim()&&!recording)} className="bg-indigo-600 text-white p-2 rounded-lg disabled:opacity-50"><Send className="w-4 h-4"/></button></form>
+    </section>}
+  </>;
 }

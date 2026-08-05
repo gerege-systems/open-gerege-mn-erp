@@ -60,6 +60,10 @@ services:
       PORT: 8080
       ENVIRONMENT: development
       ALLOWED_ORIGINS: http://localhost:3000
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_TTS_MODEL: ${GEMINI_TTS_MODEL:-gemini-2.5-flash-preview-tts}
+      GEMINI_VOICE: ${GEMINI_VOICE:-Kore}
     ports:
       - "8080:8080"
     depends_on:

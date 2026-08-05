@@ -8,10 +8,12 @@
     --gerege-blue: #0064e1;
     --gerege-blue-hover: #0054c2;
     --gerege-blue-soft: #eef6ff;
+    /* Chrome-profile style tonal surfaces derived from the selected accent. */
+    --gerege-bg: #f3f7fd;
+    --gerege-chrome: #edf4fd;
+    --gerege-surface-2: #eef4fb;
     --gerege-navy: #0b2550;
-    --gerege-bg: #f7f9fc;
     --gerege-surface: #ffffff;
-    --gerege-surface-2: #f1f4f8;
     --gerege-fg: #172033;
     --gerege-muted: #667085;
     --gerege-border: #e4e9f0;
@@ -26,6 +28,7 @@
 
   html[data-theme="dark"] {
     --gerege-bg: #111722;
+    --gerege-chrome: #172131;
     --gerege-surface: #171f2c;
     --gerege-surface-2: #202a38;
     --gerege-fg: #f2f4f7;
@@ -36,12 +39,21 @@
     --foreground: 210 20% 96%;
   }
 
-  html[data-accent="teal"] { --gerege-blue: #008b99; --gerege-blue-hover: #007582; --gerege-blue-soft: #e9f8f8; }
-  html[data-accent="violet"] { --gerege-blue: #7656d6; --gerege-blue-hover: #6343bf; --gerege-blue-soft: #f3f0ff; }
-  html[data-accent="emerald"] { --gerege-blue: #16845b; --gerege-blue-hover: #0f6f4b; --gerege-blue-soft: #ebf8f2; }
-  html[data-theme="dark"][data-accent="teal"] { --gerege-blue-soft: #12383d; }
-  html[data-theme="dark"][data-accent="violet"] { --gerege-blue-soft: #2b2348; }
-  html[data-theme="dark"][data-accent="emerald"] { --gerege-blue-soft: #173a2d; }
+  html[data-accent="teal"] {
+    --gerege-blue: #008b99; --gerege-blue-hover: #007582; --gerege-blue-soft: #e5f6f7;
+    --gerege-bg: #f1f8f8; --gerege-chrome: #e8f5f5; --gerege-surface-2: #edf7f7; --gerege-border: #d7e9e9;
+  }
+  html[data-accent="violet"] {
+    --gerege-blue: #7656d6; --gerege-blue-hover: #6343bf; --gerege-blue-soft: #f0ebff;
+    --gerege-bg: #f6f3fb; --gerege-chrome: #f0ecfa; --gerege-surface-2: #f3effa; --gerege-border: #e3dcf1;
+  }
+  html[data-accent="emerald"] {
+    --gerege-blue: #16845b; --gerege-blue-hover: #0f6f4b; --gerege-blue-soft: #e8f6ef;
+    --gerege-bg: #f1f8f5; --gerege-chrome: #e9f5ef; --gerege-surface-2: #eef7f2; --gerege-border: #d8e9df;
+  }
+  html[data-theme="dark"][data-accent="teal"] { --gerege-blue-soft: #12383d; --gerege-bg: #0f1c20; --gerege-chrome: #14282d; --gerege-surface-2: #193238; --gerege-border: #29454a; }
+  html[data-theme="dark"][data-accent="violet"] { --gerege-blue-soft: #2b2348; --gerege-bg: #171421; --gerege-chrome: #211b30; --gerege-surface-2: #292239; --gerege-border: #3b3250; }
+  html[data-theme="dark"][data-accent="emerald"] { --gerege-blue-soft: #173a2d; --gerege-bg: #101c18; --gerege-chrome: #162820; --gerege-surface-2: #1c3229; --gerege-border: #2d473d; }
 
   body {
     background-color: var(--gerege-bg);
@@ -66,8 +78,8 @@
 
 @layer components {
   .gerege-shell { background: var(--gerege-bg); color: var(--gerege-fg); }
-  .gerege-topbar { background: var(--gerege-surface); border-color: var(--gerege-border); }
-  .gerege-sidebar { background: var(--gerege-surface); border-color: var(--gerege-border); }
+  .gerege-topbar { background: var(--gerege-chrome); border-color: var(--gerege-border); }
+  .gerege-sidebar { background: var(--gerege-chrome); border-color: var(--gerege-border); }
   .gerege-nav-link { color: #475467; border-radius: var(--gerege-radius-control); }
   .gerege-nav-link:hover { background: var(--gerege-surface-2); color: var(--gerege-fg); }
   .gerege-nav-link-active {
@@ -108,14 +120,19 @@ html[data-design="original"] .gerege-topbar .text-slate-600 { color: #94a3b8 !im
 html[data-design="original"] .gerege-topbar .border-slate-200 { border-color: #334155 !important; }
 html[data-design="original"] .original-brand-mark { color: #818cf8; background: #1e293b; }
 html[data-design="original"] .gerege-nav-link-active {
-  color: #4f46e5;
-  background: #eef2ff;
+  color: var(--gerege-blue);
+  background: var(--gerege-blue-soft);
   box-shadow: none;
 }
-html[data-design="original"] .gerege-nav-link-active .gerege-nav-icon { color: #6366f1; }
+html[data-design="original"] .gerege-nav-link-active .gerege-nav-icon { color: var(--gerege-blue); }
 html[data-design="original"] .gerege-session-dot { background: #10b981; }
 
 html[data-design="gerege"] .original-brand-mark { color: var(--gerege-blue); background: var(--gerege-blue-soft); }
+
+/* Tailwind's neutral utility surfaces inside the authenticated shell should
+   participate in the selected tonal palette instead of staying fixed gray. */
+html[data-theme="light"] .gerege-shell .bg-slate-50,
+html[data-theme="light"] .gerege-shell .bg-slate-100 { background-color: var(--gerege-surface-2) !important; }
 
 html[data-theme="dark"] .bg-white { background-color: var(--gerege-surface) !important; }
 html[data-theme="dark"] .bg-slate-50,

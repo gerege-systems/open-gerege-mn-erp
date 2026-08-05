@@ -10,6 +10,7 @@ name: Deploy to Production (openerp.gerege.mn)
 #   DEPLOY_PORT                 defaults to 22
 #   POSTGRES_PASSWORD           database password on the server
 #   SSO_DEFAULT_CLIENT_SECRET   OAuth2 secret for the built-in client
+#   GEMINI_API_KEY              Google Gemini API key (AI degrades safely if empty)
 #
 # Repository variables:
 #   PUBLIC_ORIGIN               defaults to https://openerp.gerege.mn
@@ -132,6 +133,7 @@ jobs:
           REPO: ${{ github.repository }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           SSO_DEFAULT_CLIENT_SECRET: ${{ secrets.SSO_DEFAULT_CLIENT_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PUBLIC_ORIGIN: ${{ env.PUBLIC_ORIGIN }}
           DEMO_MODE: ${{ env.DEMO_MODE }}
         with:
@@ -139,7 +141,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER || 'deploy' }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: IMAGE_TAG,REGISTRY_USER,REGISTRY_TOKEN,REPO,POSTGRES_PASSWORD,SSO_DEFAULT_CLIENT_SECRET,PUBLIC_ORIGIN,DEMO_MODE
+          envs: IMAGE_TAG,REGISTRY_USER,REGISTRY_TOKEN,REPO,POSTGRES_PASSWORD,SSO_DEFAULT_CLIENT_SECRET,GEMINI_API_KEY,PUBLIC_ORIGIN,DEMO_MODE
           script: |
             set -euo pipefail
             APP_DIR=/opt/open-gerege-mn-erp
@@ -156,6 +158,7 @@ jobs:
             IMAGE_TAG=${IMAGE_TAG}
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             SSO_DEFAULT_CLIENT_SECRET=${SSO_DEFAULT_CLIENT_SECRET}
+            GEMINI_API_KEY=${GEMINI_API_KEY}
             PUBLIC_ORIGIN=${PUBLIC_ORIGIN}
             DEMO_MODE=${DEMO_MODE}
             EOF

@@ -184,6 +184,29 @@ export const api = {
       body: JSON.stringify({ prompt }),
     }),
 
+  chatAI: (data: {
+    prompt?: string;
+    lang?: string;
+    history?: Array<{ role: "user" | "model"; text: string }>;
+    audio?: { mime: string; data: string };
+  }) => fetcher<{ answer: string; reply: string; steps?: Array<{ tool: string }>; degraded?: boolean }>("/ai/chat", {
+    method: "POST", body: JSON.stringify(data),
+  }),
+
+  speakAI: (text: string) => fetcher<{ mime: string; data: string }>("/ai/tts", {
+    method: "POST", body: JSON.stringify({ text }),
+  }),
+
+  translateAI: (data: { text?: string; audio?: { mime: string; data: string }; target_lang: string; speak?: boolean }) =>
+    fetcher<{ source_text: string; translated: string; audio?: { mime: string; data: string } }>("/ai/translate", {
+      method: "POST", body: JSON.stringify(data),
+    }),
+
+  getAIPrompts: () => fetcher<Array<{key:string;content:string;active:boolean;global:boolean}>>("/admin/ai/prompts"),
+  updateAIPrompt: (key:string, content:string, active=true) => fetcher(`/admin/ai/prompts/${key}`, {method:"PUT",body:JSON.stringify({content,active})}),
+  getAIKnowledge: () => fetcher<Array<{id:string;title:string;content:string;source_url:string;updated_at:string}>>("/admin/ai/knowledge"),
+  createAIKnowledge: (data:{title:string;content:string;source_url:string}) => fetcher<{id:string}>("/admin/ai/knowledge",{method:"POST",body:JSON.stringify(data)}),
+
   getAIForecast: () =>
     fetcher<
       Array<{

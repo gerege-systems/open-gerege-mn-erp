@@ -20,13 +20,13 @@ import {
   FileText,
   Code2,
   Menu,
-  X,
   Palette,
   Building2,
   Database,
   Workflow,
   Layers3,
   ChevronRight,
+  BrainCircuit,
 } from "lucide-react";
 
 interface Menu {
@@ -61,11 +61,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(new Set());
   const pathname = usePathname();
   const router = useRouter();
   const { t, locale } = useI18n();
   const theme = useTheme();
+
+  useEffect(() => {
+    setDesktopSidebarOpen(localStorage.getItem("gerege_sidebar_open") !== "false");
+  }, []);
+
+  const toggleSidebar = () => {
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setDesktopSidebarOpen((current) => {
+        localStorage.setItem("gerege_sidebar_open", String(!current));
+        return !current;
+      });
+    } else {
+      setSidebarOpen((current) => !current);
+    }
+  };
 
   const isPublic = PUBLIC_ROUTES.includes(pathname);
 
@@ -152,31 +168,35 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="gerege-shell min-h-screen flex flex-col">
       {/* Top Navbar */}
-      <header className="gerege-topbar h-16 flex items-center justify-between px-4 lg:px-6 border-b sticky top-0 z-50">
-        <div className="flex items-center gap-3 min-w-0">
+      <header className="gerege-topbar h-16 flex items-center border-b sticky top-0 z-50">
+        <Link href="/apps" className="w-[calc(100%-4rem)] sm:w-60 h-full px-4 flex items-center gap-2.5 min-w-0 shrink-0 border-r border-[var(--gerege-border)] group">
+          {theme.design === "gerege" ? <img src={brandLogo.src} width={36} height={36} alt="Gerege" className="w-9 h-9 rounded-lg shadow-sm shrink-0" /> : <span className="original-brand-mark w-9 h-9 rounded-lg grid place-items-center shrink-0"><Building2 className="w-6 h-6" /></span>}
+          <span className="flex flex-col leading-tight min-w-0">
+            <span className="font-semibold text-[15px] text-slate-900 truncate">{theme.design === "gerege" ? "Gerege ERP" : "Gerege Template Platform"}</span>
+            <span className="text-[11px] text-slate-500 tracking-wide truncate">{theme.design === "gerege" ? "BUSINESS PLATFORM" : "ORIGINAL THEME"}</span>
+          </span>
+        </Link>
+
+        <div className="w-16 h-full shrink-0 border-r border-[var(--gerege-border)] grid place-items-center">
           <button
             type="button"
-            onClick={() => setSidebarOpen((open) => !open)}
-            className="lg:hidden grid place-items-center w-9 h-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-            aria-label={sidebarOpen ? (locale === "en" ? "Close menu" : "Цэс хаах") : (locale === "en" ? "Open menu" : "Цэс нээх")}
-            aria-expanded={sidebarOpen}
+            onClick={toggleSidebar}
+            className="grid place-items-center w-10 h-10 rounded-lg text-slate-600 hover:bg-slate-50"
+            aria-label={locale === "en" ? "Toggle menu" : "Цэс нээх, хаах"}
+            aria-expanded={sidebarOpen || desktopSidebarOpen}
           >
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            <Menu className="w-5 h-5" />
           </button>
-          <Link href="/apps" className="flex items-center gap-2.5 min-w-0 group">
-            {theme.design === "gerege" ? <img src={brandLogo.src} width={36} height={36} alt="Gerege" className="w-9 h-9 rounded-lg shadow-sm shrink-0" /> : <span className="original-brand-mark w-9 h-9 rounded-lg grid place-items-center shrink-0"><Building2 className="w-6 h-6" /></span>}
-            <span className="hidden sm:flex flex-col leading-tight min-w-0">
-              <span className="font-semibold text-[15px] text-slate-900 truncate">{theme.design === "gerege" ? "Gerege ERP" : "Gerege Template Platform"}</span>
-              <span className="text-[11px] text-slate-500 tracking-wide">{theme.design === "gerege" ? "BUSINESS PLATFORM" : "ORIGINAL THEME"}</span>
-            </span>
-          </Link>
+        </div>
+
+        <div className="hidden md:flex flex-1 items-center min-w-0 px-5">
           <span className="hidden md:flex items-center gap-2 text-xs text-slate-600 border-l border-slate-200 pl-4 ml-1">
             <span className="gerege-session-dot w-1.5 h-1.5 rounded-full"></span>
             <span className="truncate max-w-48"><strong className="text-slate-800 font-medium">{user?.tenant_name || "Demo Tenant"}</strong> · {locale === "en" ? "active" : "идэвхтэй"}</span>
           </span>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="hidden sm:flex items-center gap-2 sm:gap-3 pr-4 lg:pr-6">
           {/* Language and colour mode moved into the account menu, so the
               toolbar carries one control instead of three. */}
           <UserMenu user={user} onLogout={handleLogout} />
@@ -186,13 +206,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1">
         {/* Sidebar */}
         {sidebarOpen && <button className="fixed inset-0 top-16 bg-slate-950/25 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} aria-label={locale === "en" ? "Close menu" : "Цэс хаах"} />}
-        <aside className={`gerege-sidebar fixed lg:static top-16 bottom-0 left-0 z-40 w-60 border-r flex flex-col py-5 justify-between transition-transform lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <aside className={`gerege-sidebar fixed lg:static top-16 bottom-0 left-0 z-40 w-60 flex flex-col py-5 justify-between transition-all duration-200 overflow-x-hidden ${sidebarOpen ? "translate-x-0 border-r" : "-translate-x-full border-r"} ${desktopSidebarOpen ? "lg:w-60 lg:translate-x-0 lg:border-r" : "lg:w-0 lg:-translate-x-full lg:border-r-0 lg:py-0"}`}>
           <div className="space-y-6">
             <div>
               <div className="px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 {t("shell.modules")}
               </div>
               <nav className="space-y-1 px-2">
+                <Link href="/settings/ai" className={`gerege-nav-link flex items-center space-x-3 px-3 py-2.5 text-sm font-medium transition ${pathname === "/settings/ai" ? "gerege-nav-link-active font-semibold" : ""}`}>
+                  <BrainCircuit className="gerege-nav-icon w-5 h-5" /><span>AI тохиргоо</span>
+                </Link>
                 <Link
                   href="/apps"
                   className={`gerege-nav-link flex items-center space-x-3 px-3 py-2.5 text-sm font-medium transition ${

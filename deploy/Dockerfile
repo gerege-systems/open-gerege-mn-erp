@@ -4,11 +4,10 @@
 # The Go toolchain version must satisfy backend/go.mod. Official golang images
 # pin GOTOOLCHAIN=local, so an image older than the go directive fails the
 # build outright.
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
-# go.mod pins an exact patch (go 1.25.7). Official golang images set
-# GOTOOLCHAIN=local, which hard-fails if the base image is an older patch —
-# "auto" lets Go fetch the exact toolchain the module asks for.
+# The upstream AI client currently requires Go 1.26. Keep auto enabled so
+# patch-level toolchain requirements do not make an otherwise valid build fail.
 ENV GOTOOLCHAIN=auto
 
 WORKDIR /app/backend

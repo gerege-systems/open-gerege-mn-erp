@@ -230,6 +230,8 @@ npm run dev
 | `TRUST_PROXY_HEADERS` | `false` | `X-Forwarded-For`-д итгэх эсэх |
 | `SEED_DEMO_DATA` | production-оос бусад үед идэвхтэй | Туршилтын бүртгэл үүсгэх |
 | `SSO_DEFAULT_CLIENT_SECRET` | — | Production дээр заавал шаардлагатай |
+| `GEMINI_API_KEY` | — | AI chat, voice, TTS, орчуулгыг идэвхжүүлэх түлхүүр |
+| `GEMINI_MODEL` / `GEMINI_TTS_MODEL` | Gemini 2.5 Flash загварууд | Chat ба дууны model сонголт |
 | `EID_MOCK_MODE` / `DAN_MOCK_MODE` / `XYP_MOCK_MODE` | production-оос бусад үед идэвхтэй | Төрийн системийн mock горим |
 
 ---
@@ -246,6 +248,9 @@ npm run dev
 | `POST` | `/api/v1/auth/logout` | Session-ийг цуцлах |
 | `GET` | `/api/v1/menus` | Тенантад идэвхтэй цэсүүд |
 | `GET` | `/api/v1/store/apps` | Апп сторын жагсаалт |
+| `POST` | `/api/v1/ai/chat`, `/stt`, `/tts`, `/translate` | Tenant-safe Gemini AI pipeline |
+| `GET/PUT` | `/api/v1/admin/ai/prompts/{key}` | AI prompt тохируулах (админ) |
+| `GET/POST` | `/api/v1/admin/ai/knowledge` | AI мэдлэгийн сан (админ) |
 | `POST` | `/api/v1/store/apps/{slug}/install` | Апп суулгах (админ) |
 | `POST` | `/oauth2/token` | OAuth2 client credentials токен |
 

@@ -14,10 +14,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/billing"
@@ -60,6 +62,7 @@ type Server struct {
 	router         *chi.Mux
 	sessions       *auth.SessionStore
 	loginLimiter   *security.IPRateLimiter
+	aiLimiter      *security.IPRateLimiter
 	asyncMailer    *mailer.AsyncOTPMailer
 	copilotSvc     *ai.CopilotService
 	forecaster     *ai.Forecaster
@@ -148,6 +151,7 @@ func NewServer(db *pgxpool.Pool, catalogPath string) (*Server, error) {
 		router:         chi.NewRouter(),
 		sessions:       auth.NewSessionStore(db, auth.DefaultSessionTTL),
 		loginLimiter:   security.NewIPRateLimiter(rate.Limit(5.0/60.0), 5), // 5 logins per minute
+		aiLimiter:      security.NewIPRateLimiter(rate.Limit(20.0/60.0), 10),
 		asyncMailer:    asyncMailer,
 		copilotSvc:     ai.NewCopilotService(db),
 		forecaster:     ai.NewForecaster(db),
@@ -227,8 +231,16 @@ func (s *Server) setupRoutes() {
 			pr.Get("/menus", s.handleMenus)
 
 			// AI Copilot & Forecasting
-			pr.Post("/ai/copilot", s.handleAICopilot)
+			pr.With(security.RateLimitMiddleware(s.aiLimiter)).Post("/ai/copilot", s.handleAICopilot)
+			pr.With(security.RateLimitMiddleware(s.aiLimiter)).Post("/ai/chat", s.handleAIChat)
+			pr.With(security.RateLimitMiddleware(s.aiLimiter)).Post("/ai/stt", s.handleAISTT)
+			pr.With(security.RateLimitMiddleware(s.aiLimiter)).Post("/ai/tts", s.handleAITTS)
+			pr.With(security.RateLimitMiddleware(s.aiLimiter)).Post("/ai/translate", s.handleAITranslate)
 			pr.Get("/ai/stock-forecast", s.handleAIForecast)
+			pr.With(s.requireAdmin).Get("/admin/ai/prompts", s.handleAIListPrompts)
+			pr.With(s.requireAdmin).Put("/admin/ai/prompts/{key}", s.handleAIUpdatePrompt)
+			pr.With(s.requireAdmin).Get("/admin/ai/knowledge", s.handleAIListKnowledge)
+			pr.With(s.requireAdmin).Post("/admin/ai/knowledge", s.handleAICreateKnowledge)
 
 			// XYP State Information Exchange System (xyp.gerege.mn)
 			pr.Post("/xyp/citizen", s.handleXYPCitizenQuery)
@@ -670,6 +682,190 @@ func (s *Server) handleAICopilot(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(res)
 }
 
+func (s *Server) handleAIChat(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenant.FromContext(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req ai.CopilotRequest
+	if err := decodeLimitedJSON(r, &req, 1<<20); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid AI request")
+		return
+	}
+	req.TenantID = tenantID
+	res, err := s.copilotSvc.Query(r.Context(), req)
+	if err != nil {
+		writeJSONError(w, aiStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) handleAISTT(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Audio ai.Audio `json:"audio"`
+	}
+	if err := decodeLimitedJSON(r, &req, 1<<20); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid audio request")
+		return
+	}
+	text, err := s.copilotSvc.Transcribe(r.Context(), req.Audio)
+	if err != nil {
+		writeJSONError(w, aiStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"text": text})
+}
+
+func (s *Server) handleAITTS(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := decodeLimitedJSON(r, &req, 16<<10); err != nil || req.Text == "" {
+		writeJSONError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	audio, err := s.copilotSvc.Speak(r.Context(), req.Text)
+	if err != nil {
+		writeJSONError(w, aiStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, audio)
+}
+
+func (s *Server) handleAITranslate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Text   string    `json:"text"`
+		Audio  *ai.Audio `json:"audio"`
+		Target string    `json:"target_lang"`
+		Speak  bool      `json:"speak"`
+	}
+	if err := decodeLimitedJSON(r, &req, 1<<20); err != nil || req.Target == "" {
+		writeJSONError(w, http.StatusBadRequest, "invalid translation request")
+		return
+	}
+	if req.Text == "" && req.Audio != nil {
+		var err error
+		req.Text, err = s.copilotSvc.Transcribe(r.Context(), *req.Audio)
+		if err != nil {
+			writeJSONError(w, aiStatus(err), err.Error())
+			return
+		}
+	}
+	translated, err := s.copilotSvc.Translate(r.Context(), req.Text, req.Target)
+	if err != nil {
+		writeJSONError(w, aiStatus(err), err.Error())
+		return
+	}
+	result := map[string]any{"source_text": req.Text, "translated": translated}
+	if req.Speak {
+		if sound, e := s.copilotSvc.Speak(r.Context(), translated); e == nil {
+			result["audio"] = sound
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleAIListPrompts(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenant.FromContext(r.Context())
+	if err != nil {
+		writeJSONError(w, 401, "unauthorized")
+		return
+	}
+	rows, err := s.db.Query(r.Context(), `SELECT prompt_key,content,active,tenant_id IS NULL FROM ai_prompts WHERE tenant_id IS NULL OR tenant_id=$1 ORDER BY prompt_key,tenant_id NULLS FIRST`, tenantID)
+	if err != nil {
+		writeJSONError(w, 500, "failed to load AI prompts")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var key, content string
+		var active, global bool
+		if rows.Scan(&key, &content, &active, &global) == nil {
+			items = append(items, map[string]any{"key": key, "content": content, "active": active, "global": global})
+		}
+	}
+	writeJSON(w, 200, items)
+}
+func (s *Server) handleAIUpdatePrompt(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenant.FromContext(r.Context())
+	if err != nil {
+		writeJSONError(w, 401, "unauthorized")
+		return
+	}
+	key := chi.URLParam(r, "key")
+	if key != "scope" && key != "instructions" {
+		writeJSONError(w, 400, "invalid prompt key")
+		return
+	}
+	var req struct {
+		Content string `json:"content"`
+		Active  bool   `json:"active"`
+	}
+	if decodeLimitedJSON(r, &req, 32<<10) != nil || strings.TrimSpace(req.Content) == "" {
+		writeJSONError(w, 400, "content is required")
+		return
+	}
+	_, err = s.db.Exec(r.Context(), `INSERT INTO ai_prompts(tenant_id,prompt_key,content,active) VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id,prompt_key) DO UPDATE SET content=EXCLUDED.content,active=EXCLUDED.active,updated_at=NOW()`, tenantID, key, req.Content, req.Active)
+	if err != nil {
+		writeJSONError(w, 500, "failed to save AI prompt")
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "saved"})
+}
+func (s *Server) handleAIListKnowledge(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenant.FromContext(r.Context())
+	if err != nil {
+		writeJSONError(w, 401, "unauthorized")
+		return
+	}
+	rows, err := s.db.Query(r.Context(), `SELECT id,title,content,source_url,updated_at FROM ai_knowledge WHERE tenant_id=$1 ORDER BY updated_at DESC LIMIT 100`, tenantID)
+	if err != nil {
+		writeJSONError(w, 500, "failed to load knowledge")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var id, title, content, url string
+		var updated time.Time
+		if rows.Scan(&id, &title, &content, &url, &updated) == nil {
+			items = append(items, map[string]any{"id": id, "title": title, "content": content, "source_url": url, "updated_at": updated})
+		}
+	}
+	writeJSON(w, 200, items)
+}
+func (s *Server) handleAICreateKnowledge(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenant.FromContext(r.Context())
+	if err != nil {
+		writeJSONError(w, 401, "unauthorized")
+		return
+	}
+	var req struct {
+		Title     string `json:"title"`
+		Content   string `json:"content"`
+		SourceURL string `json:"source_url"`
+	}
+	if decodeLimitedJSON(r, &req, 256<<10) != nil || strings.TrimSpace(req.Title) == "" || strings.TrimSpace(req.Content) == "" {
+		writeJSONError(w, 400, "title and content are required")
+		return
+	}
+	var id string
+	err = s.db.QueryRow(r.Context(), `INSERT INTO ai_knowledge(tenant_id,title,content,source_url) VALUES($1,$2,$3,$4) RETURNING id`, tenantID, req.Title, req.Content, req.SourceURL).Scan(&id)
+	if err != nil {
+		writeJSONError(w, 500, "failed to save knowledge")
+		return
+	}
+	writeJSON(w, 201, map[string]string{"id": id})
+}
+
+func decodeLimitedJSON(r *http.Request, dst any, max int64) error {
+	return json.NewDecoder(io.LimitReader(r.Body, max)).Decode(dst)
+}
+func aiStatus(error) int { return http.StatusBadGateway }
+
 func (s *Server) handleAIForecast(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := tenant.FromContext(r.Context())
 	if err != nil {
@@ -907,4 +1103,10 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }

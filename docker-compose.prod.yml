@@ -56,6 +56,10 @@ services:
       TRUST_PROXY_HEADERS: "true"
       SSO_ISSUER: ${PUBLIC_ORIGIN:-https://openerp.gerege.mn}
       SSO_DEFAULT_CLIENT_SECRET: ${SSO_DEFAULT_CLIENT_SECRET:?SSO_DEFAULT_CLIENT_SECRET is required in production}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_TTS_MODEL: ${GEMINI_TTS_MODEL:-gemini-2.5-flash-preview-tts}
+      GEMINI_VOICE: ${GEMINI_VOICE:-Kore}
       # DEMO_MODE turns this deployment into a public showcase: it seeds the
       # published demo account and lets the E-ID / DAN / XYP connectors answer
       # with canned identities. Anyone can then sign in, so leave it false for
