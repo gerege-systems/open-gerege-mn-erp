@@ -50,6 +50,7 @@ services:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/platform_db?sslmode=disable
       PORT: 8080
       ENVIRONMENT: production
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://openerp.gerege.mn}
       ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-https://openerp.gerege.mn}
       # Nginx terminates TLS in front of the API, so the forwarded client
       # address can be trusted here.
