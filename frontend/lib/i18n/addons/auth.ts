@@ -32,12 +32,14 @@ export const auth = {
   },
 
   "auth.action.retry": { mn: "Дахин оролдох", en: "Try again" },
+  "auth.action.cancel": { mn: "Цуцлах", en: "Cancel" },
   "auth.action.admin_disclosure": { mn: "Системийн админ нэвтрэлт", en: "System administrator sign-in" },
   "auth.action.admin_sign_in": { mn: "Админаар нэвтрэх", en: "Sign in as administrator" },
 
   "auth.message.starting": { mn: "Хүсэлт үүсгэж байна…", en: "Creating the request…" },
   "auth.message.scan_qr": { mn: "eID Mongolia апп-аар QR кодыг уншуулна уу.", en: "Scan the QR code with the eID Mongolia app." },
   "auth.message.sent_push": { mn: "Таны eID Mongolia апп руу хүсэлт илгээлээ.", en: "A request has been sent to your eID Mongolia app." },
+  "auth.message.expires_in": { mn: "Хүсэлтийн хугацаа: {time}", en: "Request expires in {time}" },
   "auth.message.expired": { mn: "Хүсэлтийн хугацаа дууслаа.", en: "The request has expired." },
   "auth.message.refused": { mn: "Та нэвтрэх хүсэлтийг татгалзлаа.", en: "You declined the sign-in request." },
   "auth.message.success": { mn: "Амжилттай. Систем рүү шилжиж байна…", en: "Signed in. Taking you to the platform…" },

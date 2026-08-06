@@ -62,7 +62,9 @@ export const api = {
 
   startEID: (callbackUrl = "") => fetcher<{session_id:string;device_link_url?:string;verification_code:string;expires_at:string}>("/auth/eid/start",{method:"POST",body:JSON.stringify({callbackUrl})}),
   startEIDByNationalID: (nationalId:string,callbackUrl = "") => fetcher<{session_id:string;device_link_url?:string;verification_code:string;expires_at:string}>("/auth/eid/start-id",{method:"POST",body:JSON.stringify({national_id:nationalId,callbackUrl})}),
-  pollEID: (sessionId:string) => fetcher<{state:string;token?:string;identity?:any}>("/auth/eid/poll",{method:"POST",body:JSON.stringify({session_id:sessionId})}),
+  // The poll is a long poll the API holds open for up to 25s, so the caller
+  // passes a signal to drop it the moment the citizen cancels or leaves.
+  pollEID: (sessionId:string,signal?:AbortSignal) => fetcher<{state:string;token?:string;identity?:any}>("/auth/eid/poll",{method:"POST",body:JSON.stringify({session_id:sessionId}),signal}),
 
   loginWithDAN: (danToken?: string, regNumber?: string, otpCode?: string) =>
     fetcher<{ token: string; user: any; dan_profile: any }>("/auth/dan/login", {

@@ -477,6 +477,26 @@ func (s *Server) issueSession(r *http.Request, userID, tenantID, method string) 
 		r.UserAgent(), security.ClientIP(r))
 }
 
+// signInError carries a reason that is meant for the person signing in. Account
+// linking also fails for reasons that are ours alone — a missing key, a broken
+// query, a rejected hash — and those are logged, never rendered: the citizen
+// once saw "bcrypt: password length exceeds 72 bytes" in the eID card.
+type signInError struct{ msg string }
+
+func (e signInError) Error() string { return e.msg }
+
+// reportSignInFailure answers with the reason when it is the caller's to act
+// on, and with a stable message otherwise.
+func reportSignInFailure(w http.ResponseWriter, err error) {
+	var visible signInError
+	if errors.As(err, &visible) {
+		writeJSONError(w, http.StatusForbidden, visible.Error())
+		return
+	}
+	slog.Error("failed to link verified national identity", "error", err)
+	writeJSONError(w, http.StatusInternalServerError, "Баталгаажсан eID хэрэглэгчийг ERP бүртгэлтэй холбож чадсангүй")
+}
+
 // resolveNationalIdentityUser maps a verified national identity (E-ID / DAN)
 // onto a local ERP user.
 //
@@ -500,7 +520,7 @@ func (s *Server) resolveNationalIdentityUser(ctx context.Context, email, regNumb
 	}
 
 	if config.IsProduction() {
-		return "", "", fmt.Errorf("no ERP user is linked to national identity %s", regNumber)
+		return "", "", signInError{fmt.Sprintf("no ERP user is linked to national identity %s", regNumber)}
 	}
 
 	// Development convenience only: fall back to the seeded demo account so
@@ -533,11 +553,11 @@ func (s *Server) resolveOrProvisionEIDUser(ctx context.Context, identity *eid.EI
 		subject = strings.TrimSpace(identity.RegNumber)
 	}
 	if subject == "" {
-		return "", "", errors.New("eID identity has no stable subject")
+		return "", "", errors.New("eID identity carries neither a civil ID nor a registration number")
 	}
 	linkingKey := os.Getenv("EID_RP_SECRET")
 	if linkingKey == "" {
-		return "", "", errors.New("eID account-linking key is unavailable")
+		return "", "", errors.New("EID_RP_SECRET is unset, so no account-linking key is available")
 	}
 	mac := hmac.New(sha256.New, []byte(linkingKey))
 	_, _ = mac.Write([]byte("eid-mn:" + subject))
@@ -553,10 +573,10 @@ func (s *Server) resolveOrProvisionEIDUser(ctx context.Context, identity *eid.EI
 
 	tenantSlug := strings.TrimSpace(os.Getenv("EID_JIT_TENANT_SLUG"))
 	if tenantSlug == "" {
-		return "", "", errors.New("eID identity is verified but account provisioning is disabled")
+		return "", "", signInError{"eID identity is verified but account provisioning is disabled"}
 	}
 	if err = s.db.QueryRow(ctx, `SELECT id::text FROM tenants WHERE slug=$1`, tenantSlug).Scan(&tenantID); err != nil {
-		return "", "", fmt.Errorf("eID provisioning tenant is unavailable")
+		return "", "", fmt.Errorf("eID provisioning tenant %q is unavailable: %w", tenantSlug, err)
 	}
 	name := strings.TrimSpace(identity.LastName + " " + identity.FirstName)
 	if name == "" {
@@ -1149,8 +1169,7 @@ func (s *Server) handleEIDPoll(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, tenantID, err := s.resolveOrProvisionEIDUser(r.Context(), result.Identity)
 	if err != nil {
-		slog.Error("failed to link verified eID identity", "error", err)
-		writeJSONError(w, http.StatusForbidden, "Баталгаажсан eID хэрэглэгчийг ERP бүртгэлтэй холбож чадсангүй")
+		reportSignInFailure(w, err)
 		return
 	}
 	token, expiresAt, err := s.issueSession(r, userID, tenantID, "eid-app")
@@ -1200,7 +1219,7 @@ func (s *Server) handleEIDLogin(w http.ResponseWriter, r *http.Request) {
 
 	userID, tenantID, err := s.resolveNationalIdentityUser(r.Context(), identity.Email, identity.RegNumber)
 	if err != nil {
-		writeJSONError(w, http.StatusForbidden, err.Error())
+		reportSignInFailure(w, err)
 		return
 	}
 
@@ -1266,7 +1285,7 @@ func (s *Server) handleDANLogin(w http.ResponseWriter, r *http.Request) {
 
 	userID, tenantID, err := s.resolveNationalIdentityUser(r.Context(), profile.Email, profile.RegNumber)
 	if err != nil {
-		writeJSONError(w, http.StatusForbidden, err.Error())
+		reportSignInFailure(w, err)
 		return
 	}
 

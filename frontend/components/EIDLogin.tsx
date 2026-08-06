@@ -4,36 +4,107 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import {QRCodeSVG} from "qrcode.react";
 import {api} from "@/lib/api";
 import {useI18n} from "@/lib/i18n";
-import {Fingerprint,RefreshCw,ShieldCheck,Smartphone} from "lucide-react";
+import {Fingerprint,RefreshCw,ShieldCheck,Smartphone,X} from "lucide-react";
 
 type Method="id"|"qr";
 type Phase="idle"|"starting"|"waiting"|"expired"|"refused"|"error"|"success";
 type Start={session_id:string;device_link_url?:string;verification_code:string;expires_at:string};
 
+// The API holds every /auth/eid/poll open for up to 25s, so one check is
+// already a long wait — this is only the breather between two of them.
+const GAP=1200;
+// A dropped long-poll is ordinary on a mobile network, so a session survives
+// a few in a row before the citizen is told the sign-in failed.
+const TOLERATED_FAILURES=3;
+const FALLBACK_TTL=120_000;
+
 function mobile(){return typeof navigator!=="undefined"&&/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)}
 function callbackURL(){return typeof window==="undefined"?"":`${window.location.origin}/auth/eid/callback`}
+function deadlineOf(start:Start){const at=Date.parse(start.expires_at);return Number.isNaN(at)?Date.now()+FALLBACK_TTL:at}
+function sleep(ms:number){return new Promise(resolve=>setTimeout(resolve,ms))}
+function clock(seconds:number){return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`}
 
 export default function EIDLogin({next="/apps",compact=false}:{next?:string;compact?:boolean}){
   const {t}=useI18n();
-  const [method,setMethod]=useState<Method>("id"),[phase,setPhase]=useState<Phase>("idle"),[nationalId,setNationalId]=useState(""),[start,setStart]=useState<Start|null>(null),[error,setError]=useState("");
-  const timer=useRef<ReturnType<typeof setInterval>|null>(null),mounted=useRef(true);
-  const stop=useCallback(()=>{if(timer.current){clearInterval(timer.current);timer.current=null}},[]);
-  const poll=useCallback(async(sid:string)=>{try{const res=await api.pollEID(sid);if(!mounted.current)return;if(res.state==="COMPLETE"){stop();setPhase("success");if(res.token)localStorage.setItem("session_token",res.token);window.location.assign(next)}else if(res.state==="EXPIRED"){stop();setPhase("expired")}else if(res.state==="REFUSED"){stop();setPhase("refused")}}catch(e:any){if(!mounted.current)return;stop();setError(e.message||t("auth.message.error_link"));setPhase("error")}},[next,stop]);
-  const arm=useCallback((data:Start)=>{setStart(data);setPhase("waiting");timer.current=setInterval(()=>void poll(data.session_id),2500);void poll(data.session_id)},[poll]);
-  const begin=useCallback(async(selected:Method)=>{stop();setError("");setStart(null);setPhase("starting");try{const cb=mobile()?callbackURL():"";const data=selected==="qr"?await api.startEID(cb):await api.startEIDByNationalID(nationalId.trim().toUpperCase(),cb);arm(data);if(selected==="qr"&&mobile())window.location.href=`geregesmartid://approve?sessionId=${encodeURIComponent(data.session_id)}`}catch(e:any){setError(e.message||t("auth.message.error_service"));setPhase("error")}},[arm,nationalId,stop]);
-  useEffect(()=>()=>{mounted.current=false;stop()},[stop]);
+  const [method,setMethod]=useState<Method>("id"),[phase,setPhase]=useState<Phase>("idle"),[nationalId,setNationalId]=useState(""),[start,setStart]=useState<Start|null>(null),[error,setError]=useState(""),[left,setLeft]=useState(0);
+  // Each attempt takes a ticket. Anything asynchronous compares its ticket
+  // before touching state, so a cancelled or superseded attempt cannot revive
+  // the card once the citizen has moved on.
+  const ticket=useRef(0),inflight=useRef<AbortController|null>(null);
+  const stop=useCallback(()=>{ticket.current++;inflight.current?.abort();inflight.current=null},[]);
+
+  /* One check at a time. Polling on an interval instead stacked long-polls —
+     ten of them within the first 25s — until the browser ran out of
+     connections to the host and the page stopped responding altogether. */
+  const watch=useCallback(async(data:Start)=>{
+    stop();
+    const mine=ticket.current,deadline=deadlineOf(data);
+    let failures=0;
+    setStart(data);setPhase("waiting");
+    while(ticket.current===mine){
+      if(Date.now()>=deadline){setPhase("expired");return}
+      const control=new AbortController();
+      inflight.current=control;
+      try{
+        const res=await api.pollEID(data.session_id,control.signal);
+        if(ticket.current!==mine)return;
+        failures=0;
+        if(res.state==="COMPLETE"){ticket.current++;setPhase("success");if(res.token)localStorage.setItem("session_token",res.token);window.location.assign(next);return}
+        if(res.state==="EXPIRED"){setPhase("expired");return}
+        if(res.state==="REFUSED"){setPhase("refused");return}
+      }catch(e:any){
+        if(ticket.current!==mine)return;
+        if(++failures>TOLERATED_FAILURES){setError(e?.message||t("auth.message.error_link"));setPhase("error");return}
+      }
+      await sleep(GAP);
+    }
+  },[next,stop,t]);
+
+  const begin=useCallback(async(selected:Method)=>{
+    stop();
+    const mine=ticket.current;
+    setError("");setStart(null);setPhase("starting");
+    try{
+      const cb=mobile()?callbackURL():"";
+      const data=selected==="qr"?await api.startEID(cb):await api.startEIDByNationalID(nationalId.trim().toUpperCase(),cb);
+      if(ticket.current!==mine)return;
+      if(selected==="qr"&&mobile())window.location.href=`geregesmartid://approve?sessionId=${encodeURIComponent(data.session_id)}`;
+      void watch(data);
+    }catch(e:any){
+      if(ticket.current!==mine)return;
+      setError(e?.message||t("auth.message.error_service"));setPhase("error");
+    }
+  },[nationalId,stop,t,watch]);
+
+  /* The card counts the request down itself. The eID app can go unanswered
+     without the RP session ever reporting it, and a request that visibly runs
+     out beats one that spins forever. */
+  useEffect(()=>{
+    if(phase!=="waiting"||!start)return;
+    const deadline=deadlineOf(start);
+    const tick=()=>{const secs=Math.max(0,Math.ceil((deadline-Date.now())/1000));setLeft(secs);if(secs===0){stop();setPhase("expired")}};
+    tick();
+    const id=setInterval(tick,1000);
+    return ()=>clearInterval(id);
+  },[phase,start,stop]);
+
+  useEffect(()=>()=>{stop()},[stop]);
+  const cancel=()=>{stop();setPhase("idle");setStart(null);setError("")};
   const switchMethod=(value:Method)=>{stop();setMethod(value);setPhase("idle");setStart(null);setError("");if(value==="qr")void begin("qr")};
+  const pending=phase==="starting"||phase==="waiting";
   const terminal=phase==="error"||phase==="expired"||phase==="refused";
   return <div className={`eid-login ${compact?"eid-login--compact":""}`} aria-live="polite">
     <header className="eid-login__head"><span><Fingerprint/></span><div><h2>{t("auth.eid.title")}</h2><p>{t("auth.eid.subtitle")}</p></div></header>
     <div className="eid-tabs" role="tablist"><button className={method==="id"?"is-active":""} onClick={()=>switchMethod("id")}>{t("auth.eid.tab_id")}</button><button className={method==="qr"?"is-active":""} onClick={()=>switchMethod("qr")}>{t("auth.eid.tab_qr")}</button></div>
     {error&&<p className="eid-alert eid-alert--error">{error}</p>}{phase==="expired"&&<p className="eid-alert">{t("auth.message.expired")}</p>}{phase==="refused"&&<p className="eid-alert eid-alert--error">{t("auth.message.refused")}</p>}
-    {method==="id"&&phase!=="waiting"&&phase!=="starting"&&<form onSubmit={e=>{e.preventDefault();void begin("id")}}><label htmlFor="eid-rd">{t("auth.eid.reg_number")}</label><input id="eid-rd" value={nationalId} onChange={e=>setNationalId(e.target.value.toUpperCase())} placeholder={t("auth.eid.reg_number_placeholder")} autoComplete="off" required minLength={8}/><button className="eid-primary"><Smartphone/> {t("auth.eid.send_request")}</button></form>}
+    {method==="id"&&!pending&&<form onSubmit={e=>{e.preventDefault();void begin("id")}}><label htmlFor="eid-rd">{t("auth.eid.reg_number")}</label><input id="eid-rd" value={nationalId} onChange={e=>setNationalId(e.target.value.toUpperCase())} placeholder={t("auth.eid.reg_number_placeholder")} autoComplete="off" required minLength={8}/><button className="eid-primary"><Smartphone/> {t("auth.eid.send_request")}</button></form>}
     {phase==="starting"&&<div className="eid-status"><RefreshCw className="animate-spin"/> {t("auth.message.starting")}</div>}
     {phase==="waiting"&&start&&<div className="eid-wait">
       {method==="qr"&&start.device_link_url&&<div className="eid-qr"><QRCodeSVG value={start.device_link_url} size={compact?154:190} level="M"/></div>}
       <p>{t(method==="qr"?"auth.message.scan_qr":"auth.message.sent_push")}</p><small>{t("auth.eid.verification_code")}</small><strong>{start.verification_code}</strong><span><ShieldCheck/> {t("auth.eid.confirm_hint")}</span>
+      <span className="eid-countdown">{t("auth.message.expires_in",{time:clock(left)})}</span>
     </div>}
+    {pending&&<button className="eid-cancel" onClick={cancel}><X/> {t("auth.action.cancel")}</button>}
     {phase==="success"&&<p className="eid-alert eid-alert--success">{t("auth.message.success")}</p>}
     {terminal&&<button className="eid-retry" onClick={()=>void begin(method)}><RefreshCw/> {t("auth.action.retry")}</button>}
     <footer><ShieldCheck/> {t("auth.eid.footer")}</footer>
