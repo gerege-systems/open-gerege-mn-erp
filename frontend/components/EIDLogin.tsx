@@ -8,7 +8,9 @@ import {Fingerprint,RefreshCw,ShieldCheck,Smartphone,X} from "lucide-react";
 
 type Method="id"|"qr";
 type Phase="idle"|"starting"|"waiting"|"expired"|"refused"|"error"|"success";
-type Start={session_id:string;device_link_url?:string;verification_code:string;expires_at:string};
+// expires_at is absent for push sessions: eID reports no deadline for them, and
+// the API no longer invents one.
+type Start={session_id:string;device_link_url?:string;verification_code:string;expires_at?:string};
 
 // The API holds every /auth/eid/poll open for up to 25s and answers the moment
 // the citizen approves, so this gap is the only stretch where an approval is
@@ -18,11 +20,16 @@ const GAP=400;
 // A dropped long-poll is ordinary on a mobile network, so a session survives
 // a few in a row before the citizen is told the sign-in failed.
 const TOLERATED_FAILURES=3;
-const FALLBACK_TTL=120_000;
+// Backstop, not a deadline. eID decides when a session dies and says so with
+// EXPIRED; this only stops the card polling forever if that answer never comes,
+// so it sits well beyond any real session — one was still RUNNING after nine
+// minutes. A tighter figure here abandons approvals that were still in progress.
+const BACKSTOP=15*60_000;
 
 function mobile(){return typeof navigator!=="undefined"&&/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)}
 function callbackURL(){return typeof window==="undefined"?"":`${window.location.origin}/auth/eid/callback`}
-function deadlineOf(start:Start){const at=Date.parse(start.expires_at);return Number.isNaN(at)?Date.now()+FALLBACK_TTL:at}
+function deadlineOf(start:Start){const at=Date.parse(start.expires_at??"");return Number.isNaN(at)?Date.now()+BACKSTOP:at}
+function hasDeadline(start:Start){return !Number.isNaN(Date.parse(start.expires_at??""))}
 function sleep(ms:number){return new Promise(resolve=>setTimeout(resolve,ms))}
 function clock(seconds:number){return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`}
 
@@ -78,9 +85,9 @@ export default function EIDLogin({next="/apps",compact=false}:{next?:string;comp
     }
   },[nationalId,stop,t,watch]);
 
-  /* The card counts the request down itself. The eID app can go unanswered
-     without the RP session ever reporting it, and a request that visibly runs
-     out beats one that spins forever. */
+  /* Runs down the backstop, and shows it only when eID actually gave a deadline
+     to run down. A countdown the API made up is worse than none: it hurried the
+     citizen and then cut the session off while eID was still waiting on them. */
   useEffect(()=>{
     if(phase!=="waiting"||!start)return;
     const deadline=deadlineOf(start);
@@ -104,7 +111,7 @@ export default function EIDLogin({next="/apps",compact=false}:{next?:string;comp
     {phase==="waiting"&&start&&<div className="eid-wait">
       {method==="qr"&&start.device_link_url&&<div className="eid-qr"><QRCodeSVG value={start.device_link_url} size={compact?154:190} level="M"/></div>}
       <p>{t(method==="qr"?"auth.message.scan_qr":"auth.message.sent_push")}</p><small>{t("auth.eid.verification_code")}</small><strong>{start.verification_code}</strong><span><ShieldCheck/> {t("auth.eid.confirm_hint")}</span>
-      <span className="eid-countdown">{t("auth.message.expires_in",{time:clock(left)})}</span>
+      {hasDeadline(start)&&<span className="eid-countdown">{t("auth.message.expires_in",{time:clock(left)})}</span>}
     </div>}
     {pending&&<button className="eid-cancel" onClick={cancel}><X/> {t("auth.action.cancel")}</button>}
     {phase==="success"&&<p className="eid-alert eid-alert--success">{t("auth.message.success")}</p>}

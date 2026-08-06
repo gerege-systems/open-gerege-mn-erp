@@ -168,12 +168,17 @@ func (s *EIDService) StartByNationalID(ctx context.Context, nationalID, callback
 	return normalizeStart(started), nil
 }
 
+// normalizeStart passes the relying party's own deadline through, and passes
+// nothing through when it gives none.
+//
+// It used to invent "two minutes from now" in that case. The relying party
+// keeps a push session alive far longer — measured at over nine minutes and
+// still RUNNING — so the invented figure was not a deadline, it was a cutoff:
+// a citizen who took longer than two minutes to unlock a phone, find the
+// notification and enter a PIN had the browser abandon a session eID was
+// still waiting on. The relying party's own EXPIRED state is what ends a wait.
 func normalizeStart(started *coreeid.StartResult) *StartResult {
-	expires := started.ExpiresAt
-	if expires == "" {
-		expires = time.Now().Add(2 * time.Minute).Format(time.RFC3339)
-	}
-	return &StartResult{SessionID: started.SessionID, DeviceLinkURL: started.DeviceLinkURL, VerificationCode: started.VerificationCode, ExpiresAt: expires}
+	return &StartResult{SessionID: started.SessionID, DeviceLinkURL: started.DeviceLinkURL, VerificationCode: started.VerificationCode, ExpiresAt: started.ExpiresAt}
 }
 
 func (s *EIDService) startMock(nationalID string, deviceLink bool) *StartResult {
