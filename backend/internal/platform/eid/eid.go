@@ -26,6 +26,13 @@ import (
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/config"
 )
 
+// PollWindow is how long the relying party holds a session poll open before it
+// answers RUNNING. It is the longest a /auth/eid/poll request legitimately
+// takes, so the API's write deadline has to outlast it — see cmd/api. When it
+// did not, the connection was closed with no response written and the citizen
+// got nginx's 502 page on every check that was not answered immediately.
+const PollWindow = 25 * time.Second
+
 // AuthMethod represents official E-ID Mongolia authentication channels
 type AuthMethod string
 
@@ -202,7 +209,7 @@ func (s *EIDService) Poll(ctx context.Context, sessionID string) (*PollResult, e
 		identity := session.identity
 		return &PollResult{State: coreeid.StateComplete, Identity: &identity}, nil
 	}
-	session, err := s.rpClient.Session(ctx, sessionID, 25000)
+	session, err := s.rpClient.Session(ctx, sessionID, int(PollWindow/time.Millisecond))
 	if err != nil {
 		return nil, err
 	}

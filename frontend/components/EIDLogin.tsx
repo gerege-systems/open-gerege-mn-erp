@@ -10,9 +10,11 @@ type Method="id"|"qr";
 type Phase="idle"|"starting"|"waiting"|"expired"|"refused"|"error"|"success";
 type Start={session_id:string;device_link_url?:string;verification_code:string;expires_at:string};
 
-// The API holds every /auth/eid/poll open for up to 25s, so one check is
-// already a long wait — this is only the breather between two of them.
-const GAP=1200;
+// The API holds every /auth/eid/poll open for up to 25s and answers the moment
+// the citizen approves, so this gap is the only stretch where an approval is
+// not being watched. Keep it short: at 25s per check it costs almost nothing in
+// requests, and it is pure delay between approving and being signed in.
+const GAP=400;
 // A dropped long-poll is ordinary on a mobile network, so a session survives
 // a few in a row before the citizen is told the sign-in failed.
 const TOLERATED_FAILURES=3;

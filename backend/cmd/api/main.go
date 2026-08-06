@@ -19,8 +19,25 @@ import (
 	"time"
 
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform"
+	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eid"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/observability"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// Response deadline. /auth/eid/poll blocks for eid.PollWindow while the relying
+// party waits for the citizen to approve, so this has to outlast it with room
+// for the round trip. At 15s it did not: Go passed the write deadline while the
+// handler was still waiting, closed the connection without a response, and
+// nginx turned that into a 502 for every check the citizen did not answer
+// within 15 seconds — which read as a slow, flaky sign-in.
+var writeTimeout = eid.PollWindow + 15*time.Second
+
+// Slowloris is held off by the header deadline rather than by writeTimeout, so
+// a long poll does not have to buy a client the right to dribble out a request.
+const (
+	readTimeout       = 15 * time.Second
+	readHeaderTimeout = 10 * time.Second
+	idleTimeout       = 60 * time.Second
 )
 
 func main() {
@@ -86,11 +103,12 @@ func main() {
 	}
 
 	httpSrv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      srv.Router(),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              ":" + port,
+		Handler:           srv.Router(),
+		ReadTimeout:       readTimeout,
+		ReadHeaderTimeout: readHeaderTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	go func() {
