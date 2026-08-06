@@ -11,6 +11,8 @@ package platform
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -514,6 +516,73 @@ func (s *Server) resolveNationalIdentityUser(ctx context.Context, email, regNumb
 	}
 	slog.Warn("national identity login fell back to the demo account",
 		"reg_number", regNumber, "email", email)
+	return userID, tenantID, nil
+}
+
+// resolveOrProvisionEIDUser links an eID subject to a stable, non-PII local
+// identifier. JIT provisioning is opt-in per tenant and always receives the
+// standard user role through the membership_default_role database trigger.
+func (s *Server) resolveOrProvisionEIDUser(ctx context.Context, identity *eid.EIDIdentity) (userID, tenantID string, err error) {
+	if identity.Email != "" {
+		if userID, tenantID, err = s.resolveNationalIdentityUser(ctx, identity.Email, identity.RegNumber); err == nil {
+			return userID, tenantID, nil
+		}
+	}
+	subject := strings.TrimSpace(identity.CivilID)
+	if subject == "" {
+		subject = strings.TrimSpace(identity.RegNumber)
+	}
+	if subject == "" {
+		return "", "", errors.New("eID identity has no stable subject")
+	}
+	linkingKey := os.Getenv("EID_RP_SECRET")
+	if linkingKey == "" {
+		return "", "", errors.New("eID account-linking key is unavailable")
+	}
+	mac := hmac.New(sha256.New, []byte(linkingKey))
+	_, _ = mac.Write([]byte("eid-mn:" + subject))
+	digest := fmt.Sprintf("%x", mac.Sum(nil))
+	syntheticEmail := "eid+" + digest[:32] + "@identity.invalid"
+	if err = s.db.QueryRow(ctx,
+		`SELECT u.id::text, m.tenant_id::text FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=$1 LIMIT 1`,
+		syntheticEmail).Scan(&userID, &tenantID); err == nil {
+		return userID, tenantID, nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return "", "", err
+	}
+
+	tenantSlug := strings.TrimSpace(os.Getenv("EID_JIT_TENANT_SLUG"))
+	if tenantSlug == "" {
+		return "", "", errors.New("eID identity is verified but account provisioning is disabled")
+	}
+	if err = s.db.QueryRow(ctx, `SELECT id::text FROM tenants WHERE slug=$1`, tenantSlug).Scan(&tenantID); err != nil {
+		return "", "", fmt.Errorf("eID provisioning tenant is unavailable")
+	}
+	name := strings.TrimSpace(identity.LastName + " " + identity.FirstName)
+	if name == "" {
+		name = "eID Mongolia хэрэглэгч"
+	}
+	passwordHash, err := auth.HashPassword(digest + ":eid-only")
+	if err != nil {
+		return "", "", err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err = tx.QueryRow(ctx,
+		`INSERT INTO users(email,password_hash,name,is_admin) VALUES($1,$2,$3,FALSE)
+		 ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name RETURNING id::text`,
+		syntheticEmail, passwordHash, name).Scan(&userID); err != nil {
+		return "", "", err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO memberships(tenant_id,user_id) VALUES($1,$2) ON CONFLICT(tenant_id,user_id) DO NOTHING`, tenantID, userID); err != nil {
+		return "", "", err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return "", "", err
+	}
 	return userID, tenantID, nil
 }
 
@@ -1076,7 +1145,7 @@ func (s *Server) handleEIDPoll(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnauthorized, "eID identity verification failed")
 		return
 	}
-	userID, tenantID, err := s.resolveNationalIdentityUser(r.Context(), result.Identity.Email, result.Identity.RegNumber)
+	userID, tenantID, err := s.resolveOrProvisionEIDUser(r.Context(), result.Identity)
 	if err != nil {
 		writeJSONError(w, http.StatusForbidden, err.Error())
 		return
