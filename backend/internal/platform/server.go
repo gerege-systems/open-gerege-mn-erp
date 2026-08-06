@@ -539,6 +539,16 @@ func (s *Server) resolveNationalIdentityUser(ctx context.Context, email, regNumb
 	return userID, tenantID, nil
 }
 
+// eidLinkingDigest derives the stable, non-PII handle for an eID subject. It
+// doubles as the synthetic account's password preimage, so its length is not
+// cosmetic: bcrypt rejects anything over 72 bytes outright, and a suffix that
+// pushed it to 73 once failed every first-time eID sign-in.
+func eidLinkingDigest(linkingKey, subject string) string {
+	mac := hmac.New(sha256.New, []byte(linkingKey))
+	_, _ = mac.Write([]byte("eid-mn:" + subject))
+	return fmt.Sprintf("%x", mac.Sum(nil))
+}
+
 // resolveOrProvisionEIDUser links an eID subject to a stable, non-PII local
 // identifier. JIT provisioning is opt-in per tenant and always receives the
 // standard user role through the membership_default_role database trigger.
@@ -559,9 +569,7 @@ func (s *Server) resolveOrProvisionEIDUser(ctx context.Context, identity *eid.EI
 	if linkingKey == "" {
 		return "", "", errors.New("EID_RP_SECRET is unset, so no account-linking key is available")
 	}
-	mac := hmac.New(sha256.New, []byte(linkingKey))
-	_, _ = mac.Write([]byte("eid-mn:" + subject))
-	digest := fmt.Sprintf("%x", mac.Sum(nil))
+	digest := eidLinkingDigest(linkingKey, subject)
 	syntheticEmail := "eid+" + digest[:32] + "@identity.invalid"
 	if err = s.db.QueryRow(ctx,
 		`SELECT u.id::text, m.tenant_id::text FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=$1 LIMIT 1`,
