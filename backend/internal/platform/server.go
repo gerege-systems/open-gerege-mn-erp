@@ -69,6 +69,7 @@ type Server struct {
 	router         *chi.Mux
 	sessions       *auth.SessionStore
 	loginLimiter   *security.IPRateLimiter
+	pollLimiter    *security.IPRateLimiter
 	aiLimiter      *security.IPRateLimiter
 	asyncMailer    *mailer.AsyncOTPMailer
 	copilotSvc     *ai.CopilotService
@@ -162,7 +163,8 @@ func NewServer(db *pgxpool.Pool, catalogPath string) (*Server, error) {
 		installer:      installer,
 		router:         chi.NewRouter(),
 		sessions:       auth.NewSessionStore(db, auth.DefaultSessionTTL),
-		loginLimiter:   security.NewIPRateLimiter(rate.Limit(5.0/60.0), 5), // 5 logins per minute
+		loginLimiter:   newLoginLimiter(),
+		pollLimiter:    newPollLimiter(),
 		aiLimiter:      security.NewIPRateLimiter(rate.Limit(20.0/60.0), 10),
 		asyncMailer:    asyncMailer,
 		copilotSvc:     ai.NewCopilotService(db),
@@ -237,7 +239,10 @@ func (s *Server) setupRoutes() {
 		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/eid/login", s.handleEIDLogin)
 		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/eid/start", s.handleEIDStart)
 		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/eid/start-id", s.handleEIDStartByNationalID)
-		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/eid/poll", s.handleEIDPoll)
+		// Not the login limiter: a citizen polls for as long as it takes them to
+		// reach their phone, and sharing that budget with sign-in attempts made
+		// a busy office throttle itself out of signing in at all.
+		api.With(security.RateLimitMiddleware(s.pollLimiter)).Post("/auth/eid/poll", s.handleEIDPoll)
 		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/dan/login", s.handleDANLogin)
 		api.Post("/auth/logout", s.handleLogout)
 
@@ -469,6 +474,34 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	auth.ClearSessionCookie(w)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "logged_out"})
+}
+
+// Sign-in and eID polling are budgeted separately, because they are different
+// things happening at different rates.
+//
+// Signing in is the endpoint worth guessing against, and starting an eID
+// session pushes a notification to a real person's phone, so it stays tight.
+//
+// Polling is neither: it needs a session ID the relying party only ever handed
+// to whoever started that session, and it cannot be turned into an attempt at a
+// second one. What it does do is repeat — once every eid.PollWindow for as long
+// as a citizen takes to reach their phone. Sharing the sign-in budget meant a
+// few citizens waiting behind one office or NAT address spent it between them,
+// and the next person there could not sign in at all. So this is budgeted by
+// how many of them may plausibly be waiting behind a single address at once.
+const (
+	loginRatePerMinute = 5
+	loginBurst         = 5
+	pollRatePerMinute  = 60
+	pollBurst          = 15
+)
+
+func newLoginLimiter() *security.IPRateLimiter {
+	return security.NewIPRateLimiter(rate.Limit(float64(loginRatePerMinute)/60.0), loginBurst)
+}
+
+func newPollLimiter() *security.IPRateLimiter {
+	return security.NewIPRateLimiter(rate.Limit(float64(pollRatePerMinute)/60.0), pollBurst)
 }
 
 // issueSession creates a persisted session bound to the caller's IP and agent.
