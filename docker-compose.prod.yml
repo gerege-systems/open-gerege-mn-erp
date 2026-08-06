@@ -66,7 +66,9 @@ services:
       # with canned identities. Anyone can then sign in, so leave it false for
       # any instance holding real data.
       SEED_DEMO_DATA: ${DEMO_MODE:-false}
-      EID_MOCK_MODE: ${DEMO_MODE:-false}
+      # eID can use real RP credentials while the rest of the public showcase
+      # keeps demo data and mock DAN/XYP connectors enabled.
+      EID_MOCK_MODE: ${EID_MOCK_MODE:-false}
       EID_BASE_URL: ${EID_BASE_URL:-https://eidmongolia.mn/v3}
       EID_RP_UUID: ${EID_RP_UUID:-}
       EID_RP_SECRET: ${EID_RP_SECRET:-}
