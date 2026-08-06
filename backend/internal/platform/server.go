@@ -17,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -232,6 +233,9 @@ func (s *Server) setupRoutes() {
 		// Auth with rate limiting
 		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/login", s.handleLogin)
 		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/eid/login", s.handleEIDLogin)
+		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/eid/start", s.handleEIDStart)
+		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/eid/start-id", s.handleEIDStartByNationalID)
+		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/eid/poll", s.handleEIDPoll)
 		api.With(security.RateLimitMiddleware(s.loginLimiter)).Post("/auth/dan/login", s.handleDANLogin)
 		api.Post("/auth/logout", s.handleLogout)
 
@@ -988,6 +992,103 @@ func (s *Server) handleAIForecast(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(forecast)
+}
+
+func (s *Server) handleEIDStart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CallbackURL string `json:"callbackUrl"`
+	}
+	if r.Body != nil {
+		_ = decodeLimitedJSON(r, &req, 8<<10)
+	}
+	callback, err := validEIDCallback(req.CallbackURL)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid eID callback URL")
+		return
+	}
+	started, err := s.eidSvc.StartDeviceLink(r.Context(), callback)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "eID Mongolia session could not be started")
+		return
+	}
+	writeJSON(w, http.StatusOK, started)
+}
+
+func (s *Server) handleEIDStartByNationalID(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		NationalID  string `json:"national_id"`
+		CallbackURL string `json:"callbackUrl"`
+	}
+	if decodeLimitedJSON(r, &req, 8<<10) != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	callback, err := validEIDCallback(req.CallbackURL)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid eID callback URL")
+		return
+	}
+	started, err := s.eidSvc.StartByNationalID(r.Context(), req.NationalID, callback)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "Регистрийн дугаар олдсонгүй эсвэл eID апп-д бүртгэлгүй байна")
+		return
+	}
+	writeJSON(w, http.StatusOK, started)
+}
+
+func validEIDCallback(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	callback, err := url.Parse(raw)
+	if err != nil || callback.User != nil || (callback.Scheme != "https" && (config.IsProduction() || callback.Scheme != "http")) {
+		return "", errors.New("invalid callback")
+	}
+	publicOrigin := strings.TrimSpace(os.Getenv("PUBLIC_ORIGIN"))
+	if publicOrigin == "" {
+		publicOrigin = "http://localhost:3000"
+	}
+	origin, err := url.Parse(publicOrigin)
+	if err != nil || !strings.EqualFold(callback.Host, origin.Host) || callback.Path != "/auth/eid/callback" {
+		return "", errors.New("callback not allowed")
+	}
+	return callback.String(), nil
+}
+
+func (s *Server) handleEIDPoll(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionID string `json:"session_id"`
+	}
+	if decodeLimitedJSON(r, &req, 8<<10) != nil || strings.TrimSpace(req.SessionID) == "" {
+		writeJSONError(w, http.StatusBadRequest, "session_id is required")
+		return
+	}
+	result, err := s.eidSvc.Poll(r.Context(), req.SessionID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "eID Mongolia session check failed")
+		return
+	}
+	if result.State != "COMPLETE" {
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	if result.Identity == nil || !result.Identity.VerifiedStatus {
+		writeJSONError(w, http.StatusUnauthorized, "eID identity verification failed")
+		return
+	}
+	userID, tenantID, err := s.resolveNationalIdentityUser(r.Context(), result.Identity.Email, result.Identity.RegNumber)
+	if err != nil {
+		writeJSONError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	token, expiresAt, err := s.issueSession(r, userID, tenantID, "eid-app")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to establish session")
+		return
+	}
+	auth.SetSessionCookie(w, token, expiresAt)
+	audit.Record(r.Context(), tenantID, userID, "auth.eid_app_login_success", "eid", map[string]any{"verified": true, "method": "eid-app"})
+	writeJSON(w, http.StatusOK, map[string]any{"state": result.State, "token": token, "expires_at": expiresAt, "identity": result.Identity})
 }
 
 func (s *Server) handleEIDLogin(w http.ResponseWriter, r *http.Request) {

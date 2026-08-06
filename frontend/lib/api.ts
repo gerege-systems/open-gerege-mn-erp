@@ -60,6 +60,10 @@ export const api = {
       body: JSON.stringify({ code, redirect_uri: redirectURI, reg_number: regNumber, otp_code: otpCode, auth_method: authMethod }),
     }),
 
+  startEID: (callbackUrl = "") => fetcher<{session_id:string;device_link_url?:string;verification_code:string;expires_at:string}>("/auth/eid/start",{method:"POST",body:JSON.stringify({callbackUrl})}),
+  startEIDByNationalID: (nationalId:string,callbackUrl = "") => fetcher<{session_id:string;device_link_url?:string;verification_code:string;expires_at:string}>("/auth/eid/start-id",{method:"POST",body:JSON.stringify({national_id:nationalId,callbackUrl})}),
+  pollEID: (sessionId:string) => fetcher<{state:string;token?:string;identity?:any}>("/auth/eid/poll",{method:"POST",body:JSON.stringify({session_id:sessionId})}),
+
   loginWithDAN: (danToken?: string, regNumber?: string, otpCode?: string) =>
     fetcher<{ token: string; user: any; dan_profile: any }>("/auth/dan/login", {
       method: "POST",

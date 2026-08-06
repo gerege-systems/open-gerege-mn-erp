@@ -11,6 +11,8 @@ name: Deploy to Production (openerp.gerege.mn)
 #   POSTGRES_PASSWORD           database password on the server
 #   SSO_DEFAULT_CLIENT_SECRET   OAuth2 secret for the built-in client
 #   GEMINI_API_KEY              Google Gemini API key (AI degrades safely if empty)
+#   EID_RP_UUID                 eID Mongolia relying-party UUID
+#   EID_RP_SECRET               eID Mongolia relying-party secret
 #
 # Repository variables:
 #   PUBLIC_ORIGIN               defaults to https://openerp.gerege.mn
@@ -134,6 +136,9 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           SSO_DEFAULT_CLIENT_SECRET: ${{ secrets.SSO_DEFAULT_CLIENT_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EID_RP_UUID: ${{ secrets.EID_RP_UUID }}
+          EID_RP_SECRET: ${{ secrets.EID_RP_SECRET }}
+          EID_BASE_URL: ${{ vars.EID_BASE_URL || 'https://eidmongolia.mn/v3' }}
           PUBLIC_ORIGIN: ${{ env.PUBLIC_ORIGIN }}
           DEMO_MODE: ${{ env.DEMO_MODE }}
         with:
@@ -141,7 +146,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER || 'deploy' }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: IMAGE_TAG,REGISTRY_USER,REGISTRY_TOKEN,REPO,POSTGRES_PASSWORD,SSO_DEFAULT_CLIENT_SECRET,GEMINI_API_KEY,PUBLIC_ORIGIN,DEMO_MODE
+          envs: IMAGE_TAG,REGISTRY_USER,REGISTRY_TOKEN,REPO,POSTGRES_PASSWORD,SSO_DEFAULT_CLIENT_SECRET,GEMINI_API_KEY,EID_RP_UUID,EID_RP_SECRET,EID_BASE_URL,PUBLIC_ORIGIN,DEMO_MODE
           script: |
             set -euo pipefail
             APP_DIR=/opt/open-gerege-mn-erp
@@ -159,6 +164,9 @@ jobs:
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             SSO_DEFAULT_CLIENT_SECRET=${SSO_DEFAULT_CLIENT_SECRET}
             GEMINI_API_KEY=${GEMINI_API_KEY}
+            EID_RP_UUID=${EID_RP_UUID}
+            EID_RP_SECRET=${EID_RP_SECRET}
+            EID_BASE_URL=${EID_BASE_URL}
             PUBLIC_ORIGIN=${PUBLIC_ORIGIN}
             DEMO_MODE=${DEMO_MODE}
             EOF

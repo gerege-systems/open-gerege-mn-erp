@@ -19,7 +19,7 @@ const iconMap: Record<string, React.ReactNode> = {
   "credit-card":<CreditCard className="w-5 h-5"/>, "file-text":<FileText className="w-5 h-5"/>, code:<Code2 className="w-5 h-5"/>, landmark:<Landmark className="w-5 h-5"/>,
   "pen-tool":<PenTool className="w-5 h-5"/>,
 };
-const PUBLIC_ROUTES=["/","/login"];
+const PUBLIC_ROUTES=["/","/login","/auth/eid/callback"];
 const APP_ORDER=["io.example.contacts","io.example.products","io.example.inventory","io.example.billing","io.example.documents","io.example.esign","io.example.developer_portal","io.example.gov_services"];
 
 export default function Layout({children}:{children:React.ReactNode}){
@@ -65,8 +65,7 @@ export default function Layout({children}:{children:React.ReactNode}){
   const primaryMobileTabs=hasMobileMore?mobileAppTabs.slice(0,4):mobileAppTabs;
   const remainingMobileTabs=hasMobileMore?mobileAppTabs.slice(4):[];
 
-  if(pathname==="/login")return <main className="min-h-screen bg-slate-100 flex items-center justify-center">{children}</main>;
-  if(pathname==="/")return <>{children}</>;
+  if(isPublic)return <>{children}</>;
   if(loading)return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 font-medium">{t("web.message.loading_platform")}</div>;
 
   const platformMenus=<><MenuGroup title={t("web.group.modules")}>

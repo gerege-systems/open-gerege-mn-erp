@@ -19,8 +19,10 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
+	coreeid "github.com/gerege-systems/open-gerege-core/pkg/eid"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/config"
 )
 
@@ -64,6 +66,26 @@ type EIDService struct {
 	userInfoURL  string
 	mockMode     bool
 	httpClient   *http.Client
+	rpClient     coreeid.Client
+	mockMu       sync.Mutex
+	mockSessions map[string]mockSession
+}
+
+type StartResult struct {
+	SessionID        string `json:"session_id"`
+	DeviceLinkURL    string `json:"device_link_url,omitempty"`
+	VerificationCode string `json:"verification_code"`
+	ExpiresAt        string `json:"expires_at"`
+}
+
+type PollResult struct {
+	State    string       `json:"state"`
+	Identity *EIDIdentity `json:"identity,omitempty"`
+}
+
+type mockSession struct {
+	created  time.Time
+	identity EIDIdentity
 }
 
 func NewEIDService() *EIDService {
@@ -95,7 +117,101 @@ func NewEIDService() *EIDService {
 		userInfoURL:  userURL,
 		mockMode:     mock,
 		httpClient:   &http.Client{Timeout: 15 * time.Second},
+		rpClient: coreeid.NewClient(
+			os.Getenv("EID_BASE_URL"), os.Getenv("EID_RP_UUID"),
+			valueOr(os.Getenv("EID_RP_NAME"), "Gerege ERP"), os.Getenv("EID_RP_SECRET"),
+			valueOr(os.Getenv("EID_CERT_LEVEL"), "ADVANCED"),
+		),
+		mockSessions: make(map[string]mockSession),
 	}
+}
+
+func valueOr(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+// StartDeviceLink starts the same QR/App2App contract used by Gerege Platform.
+func (s *EIDService) StartDeviceLink(ctx context.Context, callbackURL string) (*StartResult, error) {
+	if s.mockMode {
+		return s.startMock("", true), nil
+	}
+	started, err := s.rpClient.QRInitiate(ctx, valueOr(os.Getenv("EID_DISPLAY_TEXT"), "Gerege ERP-д нэвтрэх"), callbackURL, "")
+	if err != nil {
+		return nil, err
+	}
+	return normalizeStart(started), nil
+}
+
+// StartByNationalID pushes an approval request to the citizen's eID Mongolia app.
+func (s *EIDService) StartByNationalID(ctx context.Context, nationalID, callbackURL string) (*StartResult, error) {
+	nationalID = strings.ToUpper(strings.TrimSpace(nationalID))
+	if len(nationalID) < 8 {
+		return nil, errors.New("invalid registration number")
+	}
+	if s.mockMode {
+		return s.startMock(nationalID, false), nil
+	}
+	started, err := s.rpClient.Initiate(ctx, nationalID, valueOr(os.Getenv("EID_DISPLAY_TEXT"), "Gerege ERP-д нэвтрэх"), callbackURL)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeStart(started), nil
+}
+
+func normalizeStart(started *coreeid.StartResult) *StartResult {
+	expires := started.ExpiresAt
+	if expires == "" {
+		expires = time.Now().Add(2 * time.Minute).Format(time.RFC3339)
+	}
+	return &StartResult{SessionID: started.SessionID, DeviceLinkURL: started.DeviceLinkURL, VerificationCode: started.VerificationCode, ExpiresAt: expires}
+}
+
+func (s *EIDService) startMock(nationalID string, deviceLink bool) *StartResult {
+	if nationalID == "" {
+		nationalID = "AA90010111"
+	}
+	sessionID := fmt.Sprintf("mock-%d", time.Now().UnixNano())
+	s.mockMu.Lock()
+	s.mockSessions[sessionID] = mockSession{created: time.Now(), identity: EIDIdentity{CivilID: "CID-" + nationalID, RegNumber: nationalID, FirstName: "Баталгаажсан", LastName: "Иргэн", Email: strings.ToLower(nationalID) + "@eidmongolia.mn", AuthMethod: AuthMethodPKISignature, VerifiedStatus: true, AuthenticatedAt: time.Now()}}
+	s.mockMu.Unlock()
+	link := ""
+	if deviceLink {
+		link = sessionID
+	}
+	return &StartResult{SessionID: sessionID, DeviceLinkURL: link, VerificationCode: "2026", ExpiresAt: time.Now().Add(2 * time.Minute).Format(time.RFC3339)}
+}
+
+// Poll long-polls the authoritative RP session and returns a normalized state.
+func (s *EIDService) Poll(ctx context.Context, sessionID string) (*PollResult, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return nil, errors.New("session_id is required")
+	}
+	if s.mockMode {
+		s.mockMu.Lock()
+		session, ok := s.mockSessions[sessionID]
+		s.mockMu.Unlock()
+		if !ok {
+			return &PollResult{State: coreeid.StateExpired}, nil
+		}
+		if time.Since(session.created) < 1500*time.Millisecond {
+			return &PollResult{State: coreeid.StateRunning}, nil
+		}
+		identity := session.identity
+		return &PollResult{State: coreeid.StateComplete, Identity: &identity}, nil
+	}
+	session, err := s.rpClient.Session(ctx, sessionID, 25000)
+	if err != nil {
+		return nil, err
+	}
+	result := &PollResult{State: session.State}
+	if session.State == coreeid.StateComplete && session.Identity != nil {
+		id := session.Identity
+		result.Identity = &EIDIdentity{CivilID: id.CivilID, RegNumber: id.NationalID, FirstName: id.GivenName, LastName: id.Surname, AuthMethod: AuthMethodPKISignature, VerifiedStatus: true, AuthenticatedAt: time.Now()}
+	}
+	return result, nil
 }
 
 // GetAuthorizeURL constructs official OAuth2 authorization link for eidmongolia.mn / sso.gov.mn

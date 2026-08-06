@@ -28,3 +28,16 @@ func TestAppRequestPermission(t *testing.T) {
 		t.Fatalf("government workflow must keep action-level checks, got %q", got)
 	}
 }
+
+func TestValidEIDCallback(t *testing.T) {
+	t.Setenv("PUBLIC_ORIGIN", "https://openerp.gerege.mn")
+	t.Setenv("ENVIRONMENT", "production")
+	if got, err := validEIDCallback("https://openerp.gerege.mn/auth/eid/callback"); err != nil || got == "" {
+		t.Fatalf("expected callback to be accepted: %q, %v", got, err)
+	}
+	for _, raw := range []string{"http://openerp.gerege.mn/auth/eid/callback", "https://evil.example/auth/eid/callback", "https://openerp.gerege.mn/login"} {
+		if _, err := validEIDCallback(raw); err == nil {
+			t.Fatalf("expected %q to be rejected", raw)
+		}
+	}
+}
