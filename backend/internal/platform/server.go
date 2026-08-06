@@ -562,7 +562,9 @@ func (s *Server) resolveOrProvisionEIDUser(ctx context.Context, identity *eid.EI
 	if name == "" {
 		name = "eID Mongolia хэрэглэгч"
 	}
-	passwordHash, err := auth.HashPassword(digest + ":eid-only")
+	// The synthetic account has no password login path. Keep the random-looking
+	// preimage within bcrypt's strict 72-byte input limit.
+	passwordHash, err := auth.HashPassword(digest)
 	if err != nil {
 		return "", "", err
 	}
@@ -1147,7 +1149,8 @@ func (s *Server) handleEIDPoll(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, tenantID, err := s.resolveOrProvisionEIDUser(r.Context(), result.Identity)
 	if err != nil {
-		writeJSONError(w, http.StatusForbidden, err.Error())
+		slog.Error("failed to link verified eID identity", "error", err)
+		writeJSONError(w, http.StatusForbidden, "Баталгаажсан eID хэрэглэгчийг ERP бүртгэлтэй холбож чадсангүй")
 		return
 	}
 	token, expiresAt, err := s.issueSession(r, userID, tenantID, "eid-app")
