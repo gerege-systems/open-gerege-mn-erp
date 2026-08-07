@@ -1,0 +1,375 @@
+"use client";
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Building2,
+  Clock,
+  Download,
+  FileText,
+  PenLine,
+  RotateCcw,
+  ShieldCheck,
+  Smartphone,
+  Upload,
+} from "lucide-react";
+import {
+  esign,
+  saveBlob,
+  type Representation,
+  type SignSession,
+} from "@/lib/esign";
+import { useI18n } from "@/lib/i18n";
+import { describeError } from "./shared";
+
+/**
+ * Citizen PDF signing with eID Mongolia (PIN2).
+ *
+ * Pick a file → optionally choose an organisation to sign for → a verification
+ * code appears → confirm with PIN2 in the eID Mongolia app → poll → download
+ * the signed PDF.
+ *
+ * Signing in an organisation's name still uses the citizen's personal PIN2
+ * certificate; eID checks the representation right when the ceremony starts.
+ * It is a delegation record, not a company seal.
+ */
+type Phase =
+  | { kind: "idle" }
+  | { kind: "uploading"; filename: string; orgName?: string }
+  | { kind: "waiting"; session: SignSession; orgName?: string }
+  | { kind: "completed"; session: SignSession; orgName?: string }
+  | { kind: "error"; message: string };
+
+/**
+ * Guard the upload in the browser so a citizen on a slow connection is told
+ * immediately instead of pushing 25MB up the wire only to meet a 413. It has
+ * to stay in step with the backend's policy limit and the edge proxy's
+ * client_max_body_size.
+ */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+/**
+ * How long to wait before asking again after the server answers "still
+ * pending".
+ *
+ * The reference implementation polls on a fixed 1.5s interval because its
+ * status endpoint returns immediately. Ours long-polls for up to 20 seconds,
+ * so a fixed interval would stack a dozen concurrent requests against the same
+ * ceremony. Each request is therefore issued only after the previous one has
+ * answered, and this is the pause between them.
+ */
+const POLL_PAUSE_MS = 1500;
+
+export default function EidSignView({ onSigned }: { onSigned?: () => void }) {
+  const { t, locale } = useI18n();
+  const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [orgEtsi, setOrgEtsi] = useState("");
+  const [orgs, setOrgs] = useState<Representation[]>([]);
+  const [orgsLoading, setOrgsLoading] = useState(true);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // Flipped on unmount and on reset so an in-flight long poll cannot resurrect
+  // a ceremony the user has already walked away from.
+  const cancelled = useRef(false);
+
+  const orgLabel = useCallback(
+    (org: Representation) => (locale === "en" && org.org_name_en ? org.org_name_en : org.org_name),
+    [locale],
+  );
+
+  useEffect(() => {
+    let active = true;
+    esign
+      .organizations()
+      .then((list) => active && setOrgs(list || []))
+      .catch(() => active && setOrgs([]))
+      .finally(() => active && setOrgsLoading(false));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(
+    () => () => {
+      cancelled.current = true;
+    },
+    [],
+  );
+
+  /** Polls until the ceremony reaches a terminal state. */
+  const watch = useCallback(
+    async (session: SignSession, orgName?: string) => {
+      while (!cancelled.current) {
+        let current: SignSession;
+        try {
+          current = await esign.session(session.session_id);
+        } catch {
+          // A transient failure is not a verdict. The ceremony is still open
+          // on the citizen's phone, so keep waiting rather than declaring it
+          // failed under them.
+          await sleep(POLL_PAUSE_MS);
+          continue;
+        }
+        if (cancelled.current) return;
+
+        if (current.state === "completed") {
+          setPhase({ kind: "completed", session: current, orgName });
+          onSigned?.();
+          return;
+        }
+        if (current.state === "rejected" || current.state === "expired" || current.state === "failed") {
+          setPhase({
+            kind: "error",
+            message:
+              current.state === "expired"
+                ? t("esign.message.sign_expired")
+                : current.state === "rejected"
+                  ? t("esign.message.sign_rejected")
+                  : t("esign.message.sign_failed"),
+          });
+          return;
+        }
+        await sleep(POLL_PAUSE_MS);
+      }
+    },
+    [onSigned, t],
+  );
+
+  async function onFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    // Cleared straight away so picking the same file twice still fires change.
+    event.target.value = "";
+    if (!file) return;
+
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setPhase({ kind: "error", message: t("esign.message.not_a_pdf") });
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setPhase({
+        kind: "error",
+        message: t("esign.message.file_too_large", { size: (file.size / (1024 * 1024)).toFixed(1) }),
+      });
+      return;
+    }
+
+    const selected = orgs.find((org) => org.org_etsi === orgEtsi);
+    const orgName = selected ? orgLabel(selected) : undefined;
+
+    cancelled.current = false;
+    setPhase({ kind: "uploading", filename: file.name, orgName });
+    try {
+      const session = await esign.signFile(file, orgEtsi || undefined);
+      if (cancelled.current) return;
+      setPhase({ kind: "waiting", session, orgName });
+      void watch(session, orgName);
+    } catch (err) {
+      setPhase({ kind: "error", message: describeError(err, t("esign.message.sign_failed")) });
+    }
+  }
+
+  function reset() {
+    cancelled.current = true;
+    setPhase({ kind: "idle" });
+  }
+
+  async function cancel(session: SignSession) {
+    cancelled.current = true;
+    try {
+      await esign.cancelSession(session.session_id);
+    } catch {
+      // The ceremony is abandoned from this side either way; a failed cancel
+      // only leaves a row for the housekeeping sweep to close.
+    }
+    setPhase({ kind: "idle" });
+  }
+
+  async function downloadSigned(session: SignSession) {
+    try {
+      const blob = await esign.downloadSigned(session.session_id);
+      saveBlob(blob, session.filename.replace(/\.pdf$/i, "") + "-signed.pdf");
+    } catch (err) {
+      setPhase({ kind: "error", message: describeError(err, t("esign.message.error_download_short")) });
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        onChange={onFile}
+        aria-label={t("esign.action.pick_pdf")}
+      />
+
+      {phase.kind === "idle" && (
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm">
+          <header className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+            <PenLine className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-sm font-bold text-slate-800">{t("esign.view.pick_document")}</h2>
+          </header>
+
+          <div className="px-4 py-8 text-center">
+            <div className="max-w-sm mx-auto mb-6 text-left">
+              <label
+                htmlFor="esign-onbehalf"
+                className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                {t("esign.field.sign_as")}
+              </label>
+              <select
+                id="esign-onbehalf"
+                value={orgEtsi}
+                onChange={(event) => setOrgEtsi(event.target.value)}
+                disabled={orgsLoading}
+                className="mt-1.5 w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50"
+              >
+                <option value="">{t("esign.field.sign_as_self")}</option>
+                {orgs.map((org) => (
+                  <option key={org.org_etsi} value={org.org_etsi}>
+                    {orgLabel(org)}
+                    {org.right_type ? ` (${org.right_type})` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500 mt-1.5">
+                {orgEtsi
+                  ? t("esign.message.on_behalf_hint")
+                  : !orgsLoading && orgs.length === 0
+                    ? t("esign.message.no_organizations")
+                    : t("esign.message.sign_as_hint")}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg inline-flex items-center gap-2 shadow-sm transition"
+            >
+              <Upload className="w-4 h-4" />
+              {t("esign.action.pick_pdf")}
+            </button>
+            <p className="text-xs text-slate-500 mt-3">{t("esign.message.pdf_only")}</p>
+          </div>
+        </section>
+      )}
+
+      {phase.kind === "uploading" && (
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 text-center">
+          <Clock className="w-7 h-7 text-indigo-600 mx-auto animate-pulse" />
+          <p className="font-semibold text-slate-900 mt-3">{t("esign.message.uploading")}</p>
+          <p className="text-sm text-slate-500 mt-1 inline-flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5" />
+            {phase.filename}
+          </p>
+        </section>
+      )}
+
+      {phase.kind === "waiting" && (
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 inline-flex items-center justify-center">
+            <Smartphone className="w-7 h-7" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 mt-3.5">{t("esign.view.confirm_on_phone")}</h2>
+          <p className="text-sm text-slate-500 mt-1 inline-flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5" />
+            {phase.session.filename}
+          </p>
+          {phase.orgName && (
+            <p className="text-sm text-indigo-600 mt-1 flex items-center justify-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5" />
+              {t("esign.message.on_behalf_of", { org: phase.orgName })}
+            </p>
+          )}
+
+          {phase.session.verification_code && (
+            <>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mt-5">
+                {t("esign.field.verification_code")}
+              </p>
+              <div className="flex justify-center gap-2.5 mt-2">
+                {phase.session.verification_code.split("").map((digit, index) => (
+                  <span
+                    key={index}
+                    className="w-11 h-14 inline-flex items-center justify-center text-2xl font-bold font-mono text-indigo-600 bg-slate-100 rounded-xl"
+                  >
+                    {digit}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+
+          <p className="text-sm text-slate-500 mt-5 max-w-sm mx-auto leading-relaxed">
+            {t("esign.message.pin2_instruction")}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => cancel(phase.session)}
+            className="mt-5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg inline-flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            {t("base.action.cancel")}
+          </button>
+        </section>
+      )}
+
+      {phase.kind === "completed" && (
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 inline-flex items-center justify-center">
+            <ShieldCheck className="w-7 h-7" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 mt-3.5">{t("esign.message.sign_success")}</h2>
+          <p className="text-sm text-slate-500 mt-1">{phase.session.filename}</p>
+          {phase.orgName && (
+            <p className="text-sm text-indigo-600 mt-1 flex items-center justify-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5" />
+              {t("esign.message.on_behalf_of", { org: phase.orgName })}
+            </p>
+          )}
+          {phase.session.certificate_level && (
+            <p className="text-xs text-slate-500 mt-2 font-mono">{phase.session.certificate_level}</p>
+          )}
+
+          <div className="mt-5 flex gap-2.5 justify-center flex-wrap">
+            <button
+              type="button"
+              onClick={() => downloadSigned(phase.session)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              {t("base.action.download")}
+            </button>
+            <button
+              type="button"
+              onClick={reset}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg inline-flex items-center gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              {t("esign.action.sign_another")}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {phase.kind === "error" && (
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 text-center">
+          <p className="font-semibold text-red-600">{phase.message}</p>
+          <button
+            type="button"
+            onClick={reset}
+            className="mt-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg inline-flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            {t("base.action.retry")}
+          </button>
+        </section>
+      )}
+    </>
+  );
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

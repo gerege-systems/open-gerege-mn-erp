@@ -9,15 +9,41 @@ import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import UserMenu from "@/components/UserMenu";
 import AICopilot from "@/components/AICopilot";
-import { Landmark, LayoutGrid, Settings, Users, Package, Boxes, Share2, CreditCard, FileText, Code2, Menu as MenuIcon, Palette, Building2, BrainCircuit, Search, Ellipsis, ShieldCheck, PenTool } from "lucide-react";
+import { Landmark, LayoutGrid, Settings, Users, Package, Boxes, Share2, CreditCard, FileText, Code2, Menu as MenuIcon, Palette, Building2, BrainCircuit, Search, Ellipsis, ShieldCheck, PenTool, ScrollText, Layers, Move, ServerCog, Activity, Copy, Upload, Tags, BadgeDollarSign, Ruler, Sliders, Percent, ArrowRightLeft, RefreshCw, Warehouse, Route, Calculator, Wallet, ChartColumn, ListOrdered, Receipt, ListChecks, Files, Workflow, Archive, KeyRound, Webhook, Inbox, CalendarClock, Timer } from "lucide-react";
 
 interface MenuItem { id:string; app_id?:string; app_name?:string; parent_id?:string; label:string; path?:string; icon:string; order:number }
 interface AppNav { id:string; name:string; icon:string; path:string; menus:MenuItem[] }
 
+// Every icon the server can name in a menu definition. A name missing here
+// falls back to a generic box, which is why the sub-menus under an app used to
+// render as a column of identical squares — the blueprint icons in
+// platform/menu were never mapped.
 const iconMap: Record<string, React.ReactNode> = {
   users:<Users className="w-5 h-5"/>, package:<Package className="w-5 h-5"/>, boxes:<Boxes className="w-5 h-5"/>,
   "credit-card":<CreditCard className="w-5 h-5"/>, "file-text":<FileText className="w-5 h-5"/>, code:<Code2 className="w-5 h-5"/>, landmark:<Landmark className="w-5 h-5"/>,
-  "pen-tool":<PenTool className="w-5 h-5"/>,
+  "pen-tool":<PenTool className="w-5 h-5"/>, settings:<Settings className="w-5 h-5"/>,
+  // esign
+  "scroll-text":<ScrollText className="w-5 h-5"/>, layers:<Layers className="w-5 h-5"/>,
+  move:<Move className="w-5 h-5"/>, "server-cog":<ServerCog className="w-5 h-5"/>,
+  "shield-check":<ShieldCheck className="w-5 h-5"/>,
+  // contacts
+  activity:<Activity className="w-5 h-5"/>, copy:<Copy className="w-5 h-5"/>, upload:<Upload className="w-5 h-5"/>,
+  // products
+  tags:<Tags className="w-5 h-5"/>, "badge-dollar-sign":<BadgeDollarSign className="w-5 h-5"/>,
+  ruler:<Ruler className="w-5 h-5"/>, sliders:<Sliders className="w-5 h-5"/>, percent:<Percent className="w-5 h-5"/>,
+  // inventory
+  "arrow-right-left":<ArrowRightLeft className="w-5 h-5"/>, "refresh-cw":<RefreshCw className="w-5 h-5"/>,
+  warehouse:<Warehouse className="w-5 h-5"/>, route:<Route className="w-5 h-5"/>, calculator:<Calculator className="w-5 h-5"/>,
+  // billing
+  wallet:<Wallet className="w-5 h-5"/>, "chart-column":<ChartColumn className="w-5 h-5"/>,
+  "list-ordered":<ListOrdered className="w-5 h-5"/>, receipt:<Receipt className="w-5 h-5"/>,
+  // documents
+  "list-checks":<ListChecks className="w-5 h-5"/>, files:<Files className="w-5 h-5"/>,
+  workflow:<Workflow className="w-5 h-5"/>, archive:<Archive className="w-5 h-5"/>,
+  // developer portal
+  "key-round":<KeyRound className="w-5 h-5"/>, webhook:<Webhook className="w-5 h-5"/>,
+  // gov services
+  inbox:<Inbox className="w-5 h-5"/>, "calendar-clock":<CalendarClock className="w-5 h-5"/>, timer:<Timer className="w-5 h-5"/>,
 };
 const PUBLIC_ROUTES=["/","/login","/auth/eid/callback"];
 const APP_ORDER=["io.example.contacts","io.example.products","io.example.inventory","io.example.billing","io.example.documents","io.example.esign","io.example.developer_portal","io.example.gov_services"];

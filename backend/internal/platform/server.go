@@ -42,6 +42,7 @@ import (
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/config"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/dan"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eid"
+	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidsign"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/gerege"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/integration"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/mailer"
@@ -149,7 +150,7 @@ func NewServer(db *pgxpool.Pool, catalogPath string) (*Server, error) {
 	billingMod := billing.New(db)
 	documentsMod := documents.New(db)
 	govMod := gov_services.New(db)
-	esignMod := esign.New(db, gerege.NewEsignService())
+	esignMod := esign.New(db, gerege.NewEsignService(), eidsign.New())
 
 	// Instantiate Async Mailer Queue
 	syncMailer := mailer.NewSyncOTPMailer(os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"), os.Getenv("SMTP_FROM"), os.Getenv("SMTP_PASSWORD"))
@@ -187,6 +188,14 @@ func NewServer(db *pgxpool.Pool, catalogPath string) (*Server, error) {
 
 	s.setupRoutes()
 	return s, nil
+}
+
+// StartBackgroundJobs launches the periodic work app modules need. It is
+// separate from NewServer so a test can build a server without spawning
+// goroutines, and it returns immediately — every job runs until ctx is
+// cancelled at shutdown.
+func (s *Server) StartBackgroundJobs(ctx context.Context) {
+	s.esignMod.StartHousekeeping(ctx)
 }
 
 func (s *Server) Router() *chi.Mux {
@@ -580,6 +589,51 @@ func eidLinkingDigest(linkingKey, subject string) string {
 	mac := hmac.New(sha256.New, []byte(linkingKey))
 	_, _ = mac.Write([]byte("eid-mn:" + subject))
 	return fmt.Sprintf("%x", mac.Sum(nil))
+}
+
+// linkEIDIdentity records who a signed-in user is to eID Mongolia.
+//
+// Qualified remote signing addresses the citizen by their ETSI semantics
+// identifier, and until this row exists nothing on the platform knows how to
+// reach the phone of the person who just authenticated. Without it every
+// signature would make the citizen retype the registration number they had
+// just proved — and a typo there would push a PIN2 prompt at somebody else.
+//
+// It is best effort on purpose. Sign-in has already succeeded by this point,
+// and failing the login because a convenience row could not be written would
+// trade a working session for a missing one.
+func (s *Server) linkEIDIdentity(ctx context.Context, userID string, identity *eid.EIDIdentity) {
+	if identity == nil {
+		return
+	}
+	subject := strings.TrimSpace(identity.CivilID)
+	if subject == "" {
+		subject = strings.TrimSpace(identity.RegNumber)
+	}
+	if subject == "" {
+		return
+	}
+	personEtsi := eidsign.PersonEtsiFor(subject)
+
+	// The conflict target is person_etsi as well as user_id: one eID citizen
+	// resolves to one ERP account, and a second account claiming the same
+	// identifier would silently split that person's signing history in two.
+	if _, err := s.db.Exec(ctx,
+		`INSERT INTO user_eid_identities
+		     (user_id, civil_id, reg_number, person_etsi, given_name, surname, last_seen_at)
+		 VALUES ($1, NULLIF($2,''), NULLIF($3,''), $4, NULLIF($5,''), NULLIF($6,''), NOW())
+		 ON CONFLICT (user_id) DO UPDATE SET
+		     civil_id     = COALESCE(EXCLUDED.civil_id, user_eid_identities.civil_id),
+		     reg_number   = COALESCE(EXCLUDED.reg_number, user_eid_identities.reg_number),
+		     person_etsi  = EXCLUDED.person_etsi,
+		     given_name   = COALESCE(EXCLUDED.given_name, user_eid_identities.given_name),
+		     surname      = COALESCE(EXCLUDED.surname, user_eid_identities.surname),
+		     last_seen_at = NOW()`,
+		userID, identity.CivilID, identity.RegNumber, personEtsi,
+		identity.FirstName, identity.LastName); err != nil {
+		slog.Warn("could not link the eID identity to the ERP account",
+			"user_id", userID, "error", err)
+	}
 }
 
 // resolveOrProvisionEIDUser links an eID subject to a stable, non-PII local
@@ -1213,6 +1267,7 @@ func (s *Server) handleEIDPoll(w http.ResponseWriter, r *http.Request) {
 		reportSignInFailure(w, err)
 		return
 	}
+	s.linkEIDIdentity(r.Context(), userID, result.Identity)
 	token, expiresAt, err := s.issueSession(r, userID, tenantID, "eid-app")
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to establish session")

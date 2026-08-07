@@ -20,6 +20,12 @@ export const base = {
   "base.action.cancel": { mn: "Цуцлах", en: "Cancel" },
   "base.action.previous": { mn: "Өмнөх", en: "Previous" },
   "base.action.next": { mn: "Дараах", en: "Next" },
+  "base.action.retry": { mn: "Дахин оролдох", en: "Try again" },
+  "base.action.download": { mn: "Татаж авах", en: "Download" },
+  "base.action.search": { mn: "Хайх", en: "Search" },
+  "base.action.open": { mn: "Нээх", en: "Open" },
+
+  "base.label.all": { mn: "Бүгд", en: "All" },
 
   "base.state.active": { mn: "Идэвхтэй", en: "Active" },
   "base.state.inactive": { mn: "Идэвхгүй", en: "Inactive" },
@@ -28,6 +34,13 @@ export const base = {
   "base.value.no": { mn: "Үгүй", en: "No" },
 
   "base.message.loading": { mn: "Ачаалж байна...", en: "Loading..." },
+  "base.message.saving": { mn: "Хадгалж байна...", en: "Saving..." },
   "base.message.error": { mn: "Алдаа гарлаа", en: "Something went wrong" },
   "base.message.page_of": { mn: "{page} / {total} хуудас", en: "Page {page} of {total}" },
+  // The paged variant also names how many records the filter matched, which
+  // "page 2 of 7" alone does not tell an auditor scanning a log.
+  "base.message.page_summary": {
+    mn: "{page} / {pages} хуудас · нийт {total}",
+    en: "Page {page} of {pages} · {total} records",
+  },
 } as const;

@@ -111,7 +111,7 @@
 | 4 | Public Billing & e-Barimt | `io.example.billing` | `/billing` | Нэхэмжлэх, 10% НӨАТ, e-Barimt баримт |
 | 5 | Digital Documents & E-Sign | `io.example.documents` | `/documents` | Цахим баримт, гарын үсэг, батламжийн урсгал |
 | 6 | Developer Portal & OAuth2 SSO | `io.example.developer_portal` | `/developer/apps` | OAuth2 client апп бүртгэл |
-| 7 | PDF цахим гарын үсэг | `io.example.esign` | `/esign` | PDF баримтыг Gerege eSign HSM-ээр тоон гарын үсгээр баталгаажуулах |
+| 7 | PDF цахим гарын үсэг | `io.example.esign` | `/esign` | eID Mongolia (PIN2) хуулийн хүчин төгөлдөр цахим гарын үсэг, Gerege eSign HSM, багц баталгаажуулалт, гарын үсгийн лог |
 
 Апп бүр тенантад суулгагдаж идэвхжсэн үед л маршрутууд нээгдэнэ. Суулгаагүй апп
 руу хандвал `403 Forbidden` буцна.

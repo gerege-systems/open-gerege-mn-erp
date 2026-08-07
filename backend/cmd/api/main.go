@@ -102,6 +102,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Background jobs run until this context is cancelled during shutdown, so
+	// a sweep in flight is not left holding a database connection.
+	jobsCtx, stopJobs := context.WithCancel(context.Background())
+	defer stopJobs()
+	srv.StartBackgroundJobs(jobsCtx)
+
 	httpSrv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           srv.Router(),
@@ -125,6 +131,7 @@ func main() {
 	<-stop
 
 	slog.Info("shutting down HTTP API server gracefully...")
+	stopJobs()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

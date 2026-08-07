@@ -9,6 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — PDF E-Sign v2: eID Mongolia qualified remote signing
+
+- **eID Mongolia signature client ([`internal/platform/eidsign`](backend/internal/platform/eidsign))**:
+  a real relying-party client for the v3 signature API. The citizen's own device
+  holds the private key and approves with PIN2, so nothing here ever touches a
+  signing key: we hash the PDF, eID pushes that digest to the phone, and the
+  signed document is assembled by eID's own doc-signer
+  (`POST /v3/signature/stamp/{sessionId}`), which embeds the PKCS#7 together with
+  OCSP and CRL data. Certificate level defaults to `QUALIFIED` — accepting
+  `ADVANCED` would silently downgrade every document the ERP produces.
+- **Asynchronous signing ceremony** (`/api/v1/esign/sign/init`, `/sign/{id}`,
+  `/sign/{id}/download`, `/sign/{id}/cancel`): upload → verification code →
+  PIN2 on the phone → long-poll → PAdES-signed PDF. Sessions carry the exact
+  bytes whose digest was approved, so a document edited mid-ceremony cannot
+  produce a signature that fails to verify.
+- **Signing on behalf of an organisation**: representation rights are read live
+  from the national registry rather than from a certificate, because a director
+  who resigned yesterday still holds yesterday's certificate.
+- **eID identity linkage** (`user_eid_identities`, migration `00010`): sign-in
+  now records who a user is to eID. Without it every signature would make the
+  citizen retype the registration number they had just authenticated with, and a
+  typo would push the PIN2 prompt at somebody else's phone.
+- **The five module screens are now real** — signature log (filters, pagination,
+  CSV export), batch signing, stamp placement (with an A4 preview), HSM
+  connection (read-only, with a connection probe) and signing policy — replacing
+  the `/module/esign/*` coming-soon placeholders.
+- **Signing policy**: a tenant can require qualified eID signatures and disable
+  the HSM rail outright, including for callers hitting the API directly.
+
+### Fixed — PDF E-Sign
+
+- **The app's permissions were declared but never enforced.** `io.example.esign`
+  is absent from the platform's blanket app gate
+  ([`server.go`](backend/internal/platform/server.go)) and its handlers only
+  checked the tenant, so anyone in a tenant could sign. Every route now asserts
+  `esign.read`, `esign.sign` or `esign.manage` explicitly. Migration `00010`
+  backfills the grants existing roles should already have had, so no current
+  user loses access.
+- **`esign.sign` was ungrantable by the installer**: the default-role rules key
+  off a `.read`/`.manage` suffix, so only administrators would ever have
+  received it.
+- **The signature log recorded only successes**, so a refused or expired
+  ceremony left no trace — exactly the event an auditor looks for. Failures,
+  refusals, expiries and downloads are now recorded with an outcome.
+- **Non-ASCII download filenames were mangled**: signed PDFs are now served with
+  an RFC 5987 `filename*`, so a Cyrillic document keeps its name.
+- **Truncated PDFs were accepted**: a valid `%PDF-` header on a truncated body
+  was passed to the signing service, which returned something that would not
+  open. Uploads are now checked for a trailer as well as a header.
+- **Sidebar sub-menus rendered as identical grey boxes**: the icons named by the
+  server's menu blueprints were never mapped in the frontend
+  ([`Layout.tsx`](frontend/components/Layout.tsx)).
+
 ### Added
 
 - **PDF E-Sign App Module ([`io.example.esign`](backend/internal/apps/esign))**:
