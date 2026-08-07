@@ -156,7 +156,15 @@ func TestSessionIDPatternMatchesTheGenerator(t *testing.T) {
 }
 
 func TestValidateEtsiGuardsThePathSegment(t *testing.T) {
-	for _, good := range []string{"PNOMN-111949212017", "NTRMN-1234567"} {
+	// The Cyrillic cases are the ones that matter: a Mongolian registration
+	// number is УА00112233, and an ASCII-only character class rejected every
+	// real one — including the example the signing screen offers as a
+	// placeholder. It reached production and returned INVALID_SIGNER for
+	// anybody who typed their own number.
+	for _, good := range []string{
+		"PNOMN-111949212017", "NTRMN-1234567",
+		"PNOMN-УА00112233", "PNOMN-МА74101813", "NTRMN-УБ1234567",
+	} {
 		if err := validateEtsi(good); err != nil {
 			t.Errorf("validateEtsi(%q) = %v, want nil", good, err)
 		}
@@ -166,6 +174,9 @@ func TestValidateEtsiGuardsThePathSegment(t *testing.T) {
 	for _, bad := range []string{
 		"", "PNOMN-", "111949212017", "PNOMN-../../admin",
 		"PNOMN-abc/def", "OTHER-123", "PNOMN-" + strings.Repeat("9", 40),
+		// Still refused: these are what the guard is actually for.
+		"PNOMN-УА/../admin", "PNOMN-УА 00112233", "PNOMN-УА.00112233",
+		"PNOMN-" + strings.Repeat("У", 40),
 	} {
 		if err := validateEtsi(bad); err == nil {
 			t.Errorf("validateEtsi accepted %q", bad)

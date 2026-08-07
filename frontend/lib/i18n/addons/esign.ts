@@ -296,11 +296,14 @@ export const esign = {
 
   // ─── Signer identity ───────────────────────────────────────────────────────
   "esign.view.signer_identity": { mn: "Гарын үсэг зурах хүн", en: "Who is signing" },
-  "esign.field.signer_id": { mn: "Регистрийн дугаар", en: "Registration number" },
+  "esign.field.signer_id": {
+    mn: "Регистрийн дугаар эсвэл иргэний дугаар",
+    en: "Registration number or civil ID",
+  },
   "esign.field.signer_id_placeholder": { mn: "ж: УА00112233", en: "e.g. УА00112233" },
   "esign.message.signer_id_hint": {
-    mn: "eID Mongolia-д бүртгэлтэй регистрийн дугаараа оруулна уу — баталгаажуулах хүсэлт тухайн хүний утас руу очно.",
-    en: "Enter the registration number registered with eID Mongolia — the approval request goes to that person's phone.",
+    mn: "eID Mongolia-д бүртгэлтэй регистрийн дугаар (УА00112233) эсвэл иргэний дугаараа (111949212017) оруулна уу — баталгаажуулах хүсэлт тухайн хүний утас руу очно.",
+    en: "Enter the registration number (УА00112233) or civil ID (111949212017) registered with eID Mongolia — the approval request goes to that person's phone.",
   },
   "esign.message.signer_id_link_hint": {
     mn: "eID-ээр нэвтэрвэл дараагийн удаа автоматаар танигдана.",

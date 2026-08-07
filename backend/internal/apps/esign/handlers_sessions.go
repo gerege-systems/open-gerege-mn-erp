@@ -448,7 +448,13 @@ func translateEIDError(err error) error {
 }
 
 // validateEtsi guards the identifier before it reaches a URL path.
-var etsiPattern = regexp.MustCompile(`^(PNOMN|NTRMN)-[A-Za-z0-9]{1,32}$`)
+//
+// Letters are matched as \p{L}, not [A-Za-z]. A Mongolian registration number
+// is Cyrillic — УА00112233 — so the ASCII-only class this started with rejected
+// every real one, including the example the signing screen itself offers. The
+// guard exists to keep separators and traversal out of a URL path segment, not
+// to have an opinion about alphabets.
+var etsiPattern = regexp.MustCompile(`^(PNOMN|NTRMN)-[\p{L}\p{N}]{1,32}$`)
 
 func validateEtsi(etsi string) error {
 	if !etsiPattern.MatchString(etsi) {
