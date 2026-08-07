@@ -1,5 +1,5 @@
 /*
- * Gerege Template Platform
+ * Gerege Nexus
  * Copyright (c) 2026 Gerege Systems Development Team, @craftzbay, Gemini AI & Claude AI
  * Distributed under the Apache 2.0 License.
  *
@@ -26,33 +26,33 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/billing"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/contacts"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/developer_portal"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/documents"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/esign"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/gov_services"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/inventory"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/apps/products"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/ai"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/appcatalog"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/appinstaller"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/audit"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/auth"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/config"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/dan"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eid"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidmongolia"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/gerege"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/integration"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/mailer"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/menu"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/observability"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/rbac"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/resilience"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/security"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/ssoprovider"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/tenant"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/apps/billing"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/apps/contacts"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/apps/developer_portal"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/apps/documents"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/apps/esign"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/apps/gov_services"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/apps/inventory"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/apps/products"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/ai"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/appcatalog"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/appinstaller"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/audit"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/auth"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/config"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/dan"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/eid"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/eidmongolia"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/gerege"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/integration"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/mailer"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/menu"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/observability"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/rbac"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/resilience"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/security"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/ssoprovider"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/tenant"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -543,11 +543,11 @@ func reportSignInFailure(w http.ResponseWriter, err error) {
 		return
 	}
 	slog.Error("failed to link verified national identity", "error", err)
-	writeJSONError(w, http.StatusInternalServerError, "Баталгаажсан eID хэрэглэгчийг ERP бүртгэлтэй холбож чадсангүй")
+	writeJSONError(w, http.StatusInternalServerError, "Баталгаажсан eID хэрэглэгчийг Gerege Nexus бүртгэлтэй холбож чадсангүй")
 }
 
 // resolveNationalIdentityUser maps a verified national identity (E-ID / DAN)
-// onto a local ERP user.
+// onto a local platform user.
 //
 // The previous implementation ran `SELECT id FROM users LIMIT 1` and granted
 // is_admin unconditionally, i.e. any successful gateway response logged the
@@ -569,7 +569,7 @@ func (s *Server) resolveNationalIdentityUser(ctx context.Context, email, regNumb
 	}
 
 	if config.IsProduction() {
-		return "", "", signInError{fmt.Sprintf("no ERP user is linked to national identity %s", regNumber)}
+		return "", "", signInError{fmt.Sprintf("no Gerege Nexus user is linked to national identity %s", regNumber)}
 	}
 
 	// Development convenience only: fall back to the seeded demo account so
@@ -581,7 +581,7 @@ func (s *Server) resolveNationalIdentityUser(ctx context.Context, email, regNumb
 		  ORDER BY u.created_at
 		  LIMIT 1`).Scan(&userID, &tenantID)
 	if err != nil {
-		return "", "", fmt.Errorf("no ERP user available for national identity login: %w", err)
+		return "", "", fmt.Errorf("no platform user available for national identity login: %w", err)
 	}
 	slog.Warn("national identity login fell back to the demo account",
 		"reg_number", regNumber, "email", email)
@@ -623,7 +623,7 @@ func (s *Server) linkEIDIdentity(ctx context.Context, userID string, identity *e
 	personEtsi := eidmongolia.PersonEtsi(subject)
 
 	// The conflict target is person_etsi as well as user_id: one eID citizen
-	// resolves to one ERP account, and a second account claiming the same
+	// resolves to one platform account, and a second account claiming the same
 	// identifier would silently split that person's signing history in two.
 	if _, err := s.db.Exec(ctx,
 		`INSERT INTO user_eid_identities
@@ -638,7 +638,7 @@ func (s *Server) linkEIDIdentity(ctx context.Context, userID string, identity *e
 		     last_seen_at = NOW()`,
 		userID, identity.CivilID, identity.RegNumber, personEtsi,
 		identity.FirstName, identity.LastName); err != nil {
-		slog.Warn("could not link the eID identity to the ERP account",
+		slog.Warn("could not link the eID identity to the platform account",
 			"user_id", userID, "error", err)
 	}
 }

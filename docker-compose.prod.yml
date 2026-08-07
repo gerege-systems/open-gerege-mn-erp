@@ -1,4 +1,10 @@
-# Production stack for openerp.gerege.mn.
+# Production stack for Gerege Nexus.
+#
+# The default origin below is openerp.gerege.mn, the legacy deployment endpoint
+# kept from before the rebrand. It stays until a new domain is provisioned: the
+# OIDC issuer, the registered eID/OAuth callbacks and the TLS certificate are
+# all pinned to it, so it is configuration to migrate deliberately rather than a
+# name to rewrite. Set PUBLIC_ORIGIN to move it.
 #
 # This file pulls pre-built images from GHCR — it never builds on the server.
 # CI builds and pushes both images, copies this file over and runs it, so the
@@ -11,7 +17,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: platform_erp_postgres
+    container_name: gerege_nexus_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: platform_db
@@ -20,7 +26,7 @@ services:
     ports:
       - "127.0.0.1:5434:5432"
     volumes:
-      - platform_erp_postgres_data:/var/lib/postgresql/data
+      - gerege_nexus_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d platform_db"]
       interval: 5s
@@ -31,7 +37,7 @@ services:
   # starting the API, so the schema is never behind the binary.
   migrate:
     image: ${IMAGE_BACKEND}:${IMAGE_TAG:-latest}
-    container_name: platform_erp_migrate
+    container_name: gerege_nexus_migrate
     pull_policy: always
     command: ["/app/migrate", "up"]
     environment:
@@ -43,7 +49,7 @@ services:
 
   backend:
     image: ${IMAGE_BACKEND}:${IMAGE_TAG:-latest}
-    container_name: platform_erp_backend
+    container_name: gerege_nexus_backend
     restart: unless-stopped
     pull_policy: always
     environment:
@@ -72,9 +78,9 @@ services:
       EID_BASE_URL: ${EID_BASE_URL:-https://eidmongolia.mn/v3}
       EID_RP_UUID: ${EID_RP_UUID:-}
       EID_RP_SECRET: ${EID_RP_SECRET:-}
-      EID_RP_NAME: ${EID_RP_NAME:-Gerege ERP}
+      EID_RP_NAME: ${EID_RP_NAME:-Gerege Nexus}
       EID_CERT_LEVEL: ${EID_CERT_LEVEL:-ADVANCED}
-      EID_DISPLAY_TEXT: ${EID_DISPLAY_TEXT:-Gerege ERP-д нэвтрэх}
+      EID_DISPLAY_TEXT: ${EID_DISPLAY_TEXT:-Gerege Nexus-д нэвтрэх}
       EID_JIT_TENANT_SLUG: ${EID_JIT_TENANT_SLUG:-}
       # eID Mongolia qualified PDF signing. It reuses the RP credentials above —
       # one registration carries both the authentication and the SIGNATURE
@@ -119,7 +125,7 @@ services:
 
   frontend:
     image: ${IMAGE_FRONTEND}:${IMAGE_TAG:-latest}
-    container_name: platform_erp_frontend
+    container_name: gerege_nexus_frontend
     restart: unless-stopped
     pull_policy: always
     ports:
@@ -129,4 +135,22 @@ services:
         condition: service_healthy
 
 volumes:
-  platform_erp_postgres_data:
+  # The key is rebranded; the physical volume deliberately is not.
+  #
+  # Compose scopes a volume with the project name, which is derived from the
+  # directory the stack is deployed from. So two separate things would each be
+  # enough to bring Postgres up on an empty data directory — renaming this key,
+  # and moving the deploy directory from /opt/open-gerege-mn-erp. Either one
+  # loses the production database, and neither announces itself: the container
+  # starts healthy, initdb runs, migrations apply, and the result is an empty
+  # tenant.
+  #
+  # `name` pins the physical volume to the one the live deployment already
+  # uses, so it is the same volume before and after the rebrand no matter where
+  # the stack runs from. A fresh install just creates it under this name.
+  #
+  # Renaming the volume itself is a data migration, not an edit: stop the stack,
+  # `docker run --rm -v old:/from -v new:/to alpine cp -a /from/. /to/`, repoint
+  # this field, restart, and only then remove the old volume.
+  gerege_nexus_postgres_data:
+    name: open-gerege-mn-erp_platform_erp_postgres_data

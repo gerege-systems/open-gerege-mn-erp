@@ -1,11 +1,17 @@
-# Gerege Template Platform
+# Gerege Nexus
 
-**Gerege Template Platform** is an open-source **modular monolith ERP and
-business application platform** inspired by Odoo and the cloud-native ecosystem.
-It is **Mongolian-first** and integrates directly with Mongolia's national
-digital infrastructure (DAN, E-ID, XYP / ХУР).
+**Integrated Digital Operations Platform**
 
-Business modules compile into a single Go binary, while a PostgreSQL-backed app
+**Gerege Nexus** is an open-source modular platform that connects services,
+operations, systems, and data across public and private organizations. It is
+**Mongolian-first** and integrates directly with Mongolia's national digital
+infrastructure (DAN, E-ID, XYP / ХУР).
+
+*Nexus* is the connection point: where organizations, services, workflows,
+systems, users and data meet. The platform itself is not tied to one sector —
+the modules running on it are what make a deployment specific.
+
+Modules compile into a single Go binary, while a PostgreSQL-backed app
 store decides which apps are active per tenant — module separation without the
 network hops or operational cost of microservices.
 
@@ -207,6 +213,11 @@ Required repository secrets:
 | `SSO_DEFAULT_CLIENT_SECRET` | Yes | Mandatory for the built-in OAuth2 client in production |
 | `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_PORT` | No | Default to `openerp.gerege.mn` / `deploy` / `22` |
 | `PUBLIC_ORIGIN` | No | Defaults to `https://openerp.gerege.mn` |
+
+> `openerp.gerege.mn` is the **legacy deployment endpoint** from before the
+> Gerege Nexus rename, and is still live. The OIDC issuer, the registered
+> eID/OAuth callbacks and the TLS certificate are all pinned to it, so it moves
+> only when a new domain is provisioned and those registrations are updated.
 
 The server needs Docker only — no source tree and no Go/Node toolchain. See
 [`deploy/.env.prod.example`](../deploy/.env.prod.example) for the values.

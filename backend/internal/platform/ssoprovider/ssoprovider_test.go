@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/ssoprovider"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/ssoprovider"
 )
 
 func TestSSOProviderTokenLifecycle(t *testing.T) {

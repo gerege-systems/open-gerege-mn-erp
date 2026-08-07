@@ -1,11 +1,19 @@
-# Gerege Template Platform
+# Gerege Nexus
 
-**Gerege Template Platform** нь Odoo болон cloud-native экосистемээс санаа авсан,
-өндөр бүтээмжтэй, Монгол Улсын цахим дэд бүтэц (ДАН, E-ID, ХУР / XYP)-тэй шууд
-холбогдох боломжтой, **монгол хэлийг үндсэн хэл болгосон** нээлттэй эхийн
-**Modular Monolith ERP & бизнес аппликейшн платформ** юм.
+**Үйлчилгээ, үйл ажиллагаа, системийн нэгдсэн платформ**
 
-Нэг Go бинари дотор бизнесийн модулиуд компиллогдож, тенант бүрт аль апп
+**Gerege Nexus** нь төрийн болон хувийн хэвшлийн байгууллагын үйлчилгээ, үйл
+ажиллагаа, систем, өгөгдлийг нэгтгэх модульт платформ юм. Cloud-native
+экосистемээс санаа авсан, өндөр бүтээмжтэй, Монгол Улсын цахим дэд бүтэц (ДАН,
+E-ID, ХУР / XYP)-тэй шууд холбогдох боломжтой, **монгол хэлийг үндсэн хэл
+болгосон** нээлттэй эхийн шийдэл.
+
+*Nexus* гэдэг нь холбох цэг — байгууллага, үйлчилгээ, ажлын урсгал, систем,
+хэрэглэгч, өгөгдөл нэг дор уулзах цэгийг хэлнэ. Платформ өөрөө нэг салбарт
+зориулагдаагүй: дээр нь ажиллах модулиуд л тухайн байгууллагын хэрэгцээг
+тодорхойлно.
+
+Нэг Go бинари дотор модулиуд компиллогдож, тенант бүрт аль апп
 идэвхтэйг PostgreSQL дээрх апп стор шийднэ — сүлжээний нэмэлт дуудлагагүй,
 микросервисийн нарийн төвөгтэй байдалгүйгээр модуль хуваарилалт хийнэ.
 
@@ -22,8 +30,8 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.25-00ADD8.svg)](https://go.dev)
 [![Next.js](https://img.shields.io/badge/Next.js-15.1-black.svg)](https://nextjs.org)
-[![CI](https://github.com/gerege-systems/open-gerege-mn-erp/actions/workflows/ci.yml/badge.svg)](https://github.com/gerege-systems/open-gerege-mn-erp/actions/workflows/ci.yml)
-[![Security](https://github.com/gerege-systems/open-gerege-mn-erp/actions/workflows/security.yml/badge.svg)](https://github.com/gerege-systems/open-gerege-mn-erp/actions/workflows/security.yml)
+[![CI](https://github.com/gerege-systems/open-gerege-nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/gerege-systems/open-gerege-nexus/actions/workflows/ci.yml)
+[![Security](https://github.com/gerege-systems/open-gerege-nexus/actions/workflows/security.yml/badge.svg)](https://github.com/gerege-systems/open-gerege-nexus/actions/workflows/security.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
@@ -211,6 +219,11 @@ npm run dev
 | `SSO_DEFAULT_CLIENT_SECRET` | Тийм | Production дээр OAuth2 client-д зайлшгүй |
 | `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_PORT` | Үгүй | Анхдагч: `openerp.gerege.mn` / `deploy` / `22` |
 | `PUBLIC_ORIGIN` | Үгүй | Анхдагч: `https://openerp.gerege.mn` |
+
+> `openerp.gerege.mn` бол Gerege Nexus нэршилд шилжихээс өмнөх **legacy
+> deployment endpoint** бөгөөд одоо ч ажиллаж байна. OIDC issuer, бүртгэлтэй
+> eID/OAuth callback, TLS гэрчилгээ бүгд түүн дээр тогтсон тул шинэ домэйн
+> бэлэн болж, бүртгэлүүд шинэчлэгдэх хүртэл өөрчлөхгүй.
 
 Серверт зөвхөн Docker шаардлагатай — эх код ч, Go/Node ч хэрэггүй. Утгуудын
 жишээг [`deploy/.env.prod.example`](deploy/.env.prod.example)-ээс үзнэ үү.

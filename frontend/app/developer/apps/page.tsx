@@ -43,6 +43,9 @@ export default function DeveloperAppsPage() {
     e.preventDefault();
     try {
       const uris = redirectURIs.split(",").map((s) => s.trim()).filter(Boolean);
+      // erp.read/erp.write are legacy compatibility scope names kept through the
+      // Gerege Nexus rebrand: the provider grants exactly these strings and
+      // existing integrations request them by name.
       await api.createDeveloperApp(clientName, uris, ["openid", "profile", "erp.read", "erp.write"]);
       setClientName("");
       setShowModal(false);

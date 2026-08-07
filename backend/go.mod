@@ -1,4 +1,4 @@
-module github.com/gerege-systems/open-gerege-mn-erp/backend
+module github.com/gerege-systems/open-gerege-nexus/backend
 
 go 1.26
 

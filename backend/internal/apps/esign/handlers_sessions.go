@@ -1,5 +1,5 @@
 /*
- * Gerege Open ERP
+ * Gerege Nexus
  * Copyright (c) 2026 Gerege Systems Development Team & Claude AI
  * Distributed under the Apache 2.0 License.
  *
@@ -29,8 +29,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/audit"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidmongolia"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/audit"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/eidmongolia"
 )
 
 // sessionIDPattern matches the identifier the library issues (32 lowercase
@@ -38,7 +38,7 @@ import (
 // reaches the database.
 var sessionIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
-// stateFromLibrary maps the library's vocabulary onto the ERP's.
+// stateFromLibrary maps the library's vocabulary onto the platform's.
 //
 // The two differ in one word: the library says "running" where this app's
 // stored state and its browser both say "pending". Mapping is cheaper than
@@ -130,7 +130,7 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The ERP-side record. The document itself stays with the library for the
+	// The platform-side record. The document itself stays with the library for the
 	// life of the ceremony, so this row is metadata only.
 	session, err := m.store.createSession(r.Context(), newSession{
 		ID:               started.SessionID,

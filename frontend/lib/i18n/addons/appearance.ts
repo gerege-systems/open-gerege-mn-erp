@@ -3,9 +3,9 @@
  */
 export const appearance = {
   "appearance.view.title": { mn: "Харагдац", en: "Appearance" },
-  "appearance.view.subtitle": { mn: "Энэ төхөөрөмж дээр Gerege ERP хэрхэн харагдахыг тохируулна.", en: "Choose how Gerege ERP looks on this device." },
-  "appearance.view.theme_style_hint": { mn: "ERP-ийн анхны харагдац эсвэл Gerege дизайн системийг сонгоно.", en: "Pick the classic ERP look or the Gerege design system." },
-  "appearance.view.original_hint": { mn: "Odoo-маягийн анхны ERP интерфэйс", en: "The original Odoo-style ERP interface" },
+  "appearance.view.subtitle": { mn: "Энэ төхөөрөмж дээр Gerege Nexus хэрхэн харагдахыг тохируулна.", en: "Choose how Gerege Nexus looks on this device." },
+  "appearance.view.theme_style_hint": { mn: "Сонгодог харагдац эсвэл Gerege дизайн системийг сонгоно.", en: "Pick the classic look or the Gerege design system." },
+  "appearance.view.original_hint": { mn: "Сонгодог интерфэйс", en: "The classic interface" },
   "appearance.view.gerege_hint": { mn: "Gerege-ийн cobalt дизайн систем", en: "The Gerege cobalt design system" },
   "appearance.view.color_mode_hint": { mn: "Гэгээн, харанхуй эсвэл төхөөрөмжийн тохиргоог дагана.", en: "Light, dark, or follow the device setting." },
   "appearance.view.accent_hint": { mn: "Cobalt нь Gerege-ийн үндсэн брэнд өнгө.", en: "Cobalt is the primary Gerege brand colour." },

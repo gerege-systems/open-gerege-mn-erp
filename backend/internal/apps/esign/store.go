@@ -1,5 +1,5 @@
 /*
- * Gerege Open ERP
+ * Gerege Nexus
  * Copyright (c) 2026 Gerege Systems Development Team & Claude AI
  * Distributed under the Apache 2.0 License.
  *

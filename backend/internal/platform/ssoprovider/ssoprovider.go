@@ -1,5 +1,5 @@
 /*
- * Gerege Template Platform
+ * Gerege Nexus
  * Copyright (c) 2026 Gerege Systems Development Team, @craftzbay, Gemini AI & Claude AI
  * Distributed under the Apache 2.0 License.
  *
@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/config"
+	"github.com/gerege-systems/open-gerege-nexus/backend/internal/platform/config"
 )
 
 type OAuth2Client struct {
@@ -68,6 +68,11 @@ type SSOProvider struct {
 func NewSSOProvider() *SSOProvider {
 	issuer := os.Getenv("SSO_ISSUER")
 	if issuer == "" {
+		// Legacy deployment endpoint, retained through the Gerege Nexus rebrand.
+		// The issuer is baked into every token already granted and into the
+		// relying parties' configuration, so it cannot follow a product rename;
+		// it changes only when a new origin is provisioned and the clients are
+		// re-registered. Deployments override it with SSO_ISSUER.
 		issuer = "https://openerp.gerege.mn"
 	}
 
@@ -98,10 +103,17 @@ func NewSSOProvider() *SSOProvider {
 		ClientID:     "gerege-dev-portal",
 		ClientSecret: secret,
 		ClientName:   "Gerege Developer Portal App",
+		// The https:// entry is the legacy deployment endpoint. A redirect URI is
+		// matched exactly against what the client sends, so it stays until a new
+		// origin exists and this allowlist is extended alongside it.
 		RedirectURIs: []string{"http://localhost:3000/callback", "https://openerp.gerege.mn/callback"},
 		GrantTypes:   []string{"authorization_code", "client_credentials", "refresh_token"},
-		Scopes:       []string{"openid", "profile", "email", "erp.read", "erp.write"},
-		CreatedAt:    time.Now(),
+		// erp.read/erp.write are legacy compatibility scope names, kept through
+		// the Gerege Nexus rebrand. They are protocol identifiers already held
+		// in issued tokens and third-party client registrations; renaming them
+		// would invalidate live grants.
+		Scopes:    []string{"openid", "profile", "email", "erp.read", "erp.write"},
+		CreatedAt: time.Now(),
 	})
 
 	return provider

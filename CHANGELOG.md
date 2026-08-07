@@ -1,6 +1,12 @@
 # Changelog
 
-All notable changes to **open-gerege-mn-erp** will be documented in this file.
+All notable changes to **open-gerege-nexus** (Gerege Nexus) will be documented in
+this file.
+
+Entries below the rebrand keep the names that were true when they shipped — the
+`open-gerege-mn-erp` repository, the ERP framing, and the `openerp.gerege.mn`
+deployment. A changelog that is edited to match the present tense stops being a
+record, and `openerp.gerege.mn` in particular is still the live endpoint.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
