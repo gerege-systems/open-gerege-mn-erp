@@ -5,11 +5,41 @@ import { AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
 import { EsignApiError, type BatchItemStatus, type BatchStatus, type LogOutcome, type SessionState } from "@/lib/esign";
 import { useI18n } from "@/lib/i18n";
 
-/** Turns any thrown value into a message carrying the backend's machine code. */
+/**
+ * Turns any thrown value into a message, without the machine code.
+ *
+ * Prefer useErrorMessage: the API answers in English, so this raw form puts an
+ * English sentence in a Mongolian interface at exactly the moment something has
+ * gone wrong. It remains for non-React callers and as the fallback when a code
+ * has no translation yet.
+ */
 export function describeError(err: unknown, fallback: string): string {
-  if (err instanceof EsignApiError) return err.code === "UNKNOWN" ? err.message : `${err.message} (${err.code})`;
+  if (err instanceof EsignApiError) return err.message;
   if (err instanceof Error && err.message) return err.message;
   return fallback;
+}
+
+/** The backend's machine code for a thrown value, if it carried one. */
+export function errorCode(err: unknown): string | null {
+  return err instanceof EsignApiError && err.code !== "UNKNOWN" ? err.code : null;
+}
+
+/**
+ * Translates a backend failure through the dictionary, keyed by its machine
+ * code. An untranslated code falls back to the server's own message, so a new
+ * code added on the server still says something useful.
+ */
+export function useErrorMessage() {
+  const { t } = useI18n();
+  return (err: unknown, fallback?: string): string => {
+    const code = errorCode(err);
+    if (code) {
+      const key = `esign.error.${code}`;
+      const translated = t(key as never);
+      if (translated !== key) return translated;
+    }
+    return describeError(err, fallback ?? t("base.message.error"));
+  };
 }
 
 export function PageHeader({

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Move, RotateCcw, Save } from "lucide-react";
 import { esign, type Placement } from "@/lib/esign";
 import { useI18n } from "@/lib/i18n";
-import { Banner, Card, Loading, PageHeader, describeError } from "@/components/esign/shared";
+import { Banner, Card, Loading, PageHeader, useErrorMessage } from "@/components/esign/shared";
 
 /** A4 in PostScript points — the page the preview and the limits are drawn to. */
 const A4_WIDTH = 595;
@@ -21,6 +21,7 @@ const A4_HEIGHT = 842;
  */
 export default function EsignPlacementPage() {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,7 +32,7 @@ export default function EsignPlacementPage() {
     esign
       .settings()
       .then((settings) => setPlacement(settings.placement))
-      .catch((err) => setError(describeError(err, t("base.message.error"))))
+      .catch((err) => setError(describe(err, t("base.message.error"))))
       .finally(() => setLoading(false));
   }, [t]);
 
@@ -47,7 +48,7 @@ export default function EsignPlacementPage() {
       setPlacement(await esign.savePlacement(placement));
       setNotice(t("esign.message.placement_saved"));
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     } finally {
       setSaving(false);
     }

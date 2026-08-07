@@ -12,7 +12,7 @@ import {
   ItemBadge,
   Loading,
   PageHeader,
-  describeError,
+  useErrorMessage,
 } from "@/components/esign/shared";
 
 /**
@@ -25,6 +25,7 @@ import {
  */
 export default function EsignBatchPage() {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [selected, setSelected] = useState<Batch | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,7 +37,7 @@ export default function EsignBatchPage() {
       const page = await esign.batches({ limit: 50 });
       setBatches(page.items || []);
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     }
   }, [t]);
 
@@ -52,7 +53,7 @@ export default function EsignBatchPage() {
     try {
       setSelected(await esign.batch(batch.id));
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     }
   };
 
@@ -178,6 +179,7 @@ function BatchDetail({
   onRefresh: (id: string) => Promise<void>;
 }) {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [running, setRunning] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -226,7 +228,7 @@ function BatchDetail({
         await onRefresh(batch.id);
       }
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     } finally {
       setRunning(false);
       setCode(null);
@@ -239,7 +241,7 @@ function BatchDetail({
       await esign.cancelBatch(batch.id);
       await onRefresh(batch.id);
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     }
   };
 
@@ -347,6 +349,7 @@ function CreateBatchModal({
   onCreated: (batch: Batch) => Promise<void>;
 }) {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [name, setName] = useState("");
   const [documents, setDocuments] = useState<EsignDocument[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -360,7 +363,7 @@ function CreateBatchModal({
       // just produce a run that fails on every item.
       .documents({ status: "PENDING", limit: 100 })
       .then((page) => setDocuments(page.items || []))
-      .catch((err) => setError(describeError(err, t("base.message.error"))))
+      .catch((err) => setError(describe(err, t("base.message.error"))))
       .finally(() => setLoading(false));
   }, [t]);
 
@@ -383,7 +386,7 @@ function CreateBatchModal({
       });
       await onCreated(batch);
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     } finally {
       setBusy(false);
     }

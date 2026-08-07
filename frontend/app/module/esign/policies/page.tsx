@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Save, ShieldCheck } from "lucide-react";
 import { esign, type Policy } from "@/lib/esign";
 import { useI18n } from "@/lib/i18n";
-import { Banner, Card, Loading, PageHeader, describeError } from "@/components/esign/shared";
+import { Banner, Card, Loading, PageHeader, useErrorMessage } from "@/components/esign/shared";
 
 /**
  * Signing policy — the rules that decide what counts as a valid signature here.
@@ -16,6 +16,7 @@ import { Banner, Card, Loading, PageHeader, describeError } from "@/components/e
  */
 export default function EsignPoliciesPage() {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,7 +27,7 @@ export default function EsignPoliciesPage() {
     esign
       .settings()
       .then((settings) => setPolicy(settings.policy))
-      .catch((err) => setError(describeError(err, t("base.message.error"))))
+      .catch((err) => setError(describe(err, t("base.message.error"))))
       .finally(() => setLoading(false));
   }, [t]);
 
@@ -41,7 +42,7 @@ export default function EsignPoliciesPage() {
       setPolicy(await esign.savePolicy(policy));
       setNotice(t("esign.message.policy_saved"));
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     } finally {
       setSaving(false);
     }

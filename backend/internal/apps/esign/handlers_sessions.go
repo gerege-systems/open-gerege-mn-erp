@@ -81,7 +81,7 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pdf, fileName, documentID, onBehalfOf, err := m.readSignInput(r, tenantID, policy)
+	pdf, fileName, documentID, onBehalfOf, bodySignerID, err := m.readSignInput(r, tenantID, policy)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -94,8 +94,12 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 	// Who signs. A linked eID account needs no input; anything else names the
 	// citizen explicitly, and a typo there would push the PIN2 prompt at
 	// somebody else's phone, so the value is validated rather than trusted.
+	// r.FormValue only reaches a multipart body, so a JSON caller names the
+	// signer in the payload instead. Without this the document-by-id route
+	// could only ever sign as the linked account, and an unlinked one had no
+	// way through at all.
 	signerEtsi := actor.Etsi
-	if raw := strings.TrimSpace(r.FormValue("signer_id")); raw != "" {
+	if raw := firstNonBlank(r.FormValue("signer_id"), bodySignerID); raw != "" {
 		signerEtsi = eidmongolia.PersonEtsi(raw)
 	}
 	if signerEtsi == "" {
@@ -159,27 +163,27 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // readSignInput accepts either shape of request and returns the bytes to sign.
-func (m *Module) readSignInput(r *http.Request, tenantID string, policy Policy) (pdf []byte, fileName, documentID, onBehalfOf string, err error) {
+func (m *Module) readSignInput(r *http.Request, tenantID string, policy Policy) (pdf []byte, fileName, documentID, onBehalfOf, signerID string, err error) {
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		r.Body = http.MaxBytesReader(nil, r.Body, maxUploadBody)
 		if parseErr := r.ParseMultipartForm(8 << 20); parseErr != nil {
-			return nil, "", "", "", tooLarge(policy)
+			return nil, "", "", "", "", tooLarge(policy)
 		}
 		file, header, formErr := r.FormFile("file")
 		if formErr != nil {
-			return nil, "", "", "", badRequest("MISSING_FILE", "a PDF file is required in the 'file' field")
+			return nil, "", "", "", "", badRequest("MISSING_FILE", "a PDF file is required in the 'file' field")
 		}
 		defer func() { _ = file.Close() }()
 
 		pdf, err = io.ReadAll(io.LimitReader(file, int64(policy.MaxUploadMB<<20)+1))
 		if err != nil {
-			return nil, "", "", "", badRequest("UNREADABLE_FILE", "the uploaded file could not be read")
+			return nil, "", "", "", "", badRequest("UNREADABLE_FILE", "the uploaded file could not be read")
 		}
 		if len(pdf) > policy.MaxUploadMB<<20 {
-			return nil, "", "", "", tooLarge(policy)
+			return nil, "", "", "", "", tooLarge(policy)
 		}
 		if err = validatePDF(pdf); err != nil {
-			return nil, "", "", "", err
+			return nil, "", "", "", "", err
 		}
 		fileName = sanitizeFileName(header.Filename)
 		onBehalfOf = normalizeOrgEtsi(r.FormValue("onBehalfOf"))
@@ -189,37 +193,48 @@ func (m *Module) readSignInput(r *http.Request, tenantID string, policy Policy) 
 		if id := strings.TrimSpace(r.FormValue("document_id")); id != "" {
 			doc, docErr := m.store.getDocument(r.Context(), tenantID, id)
 			if docErr != nil {
-				return nil, "", "", "", docErr
+				return nil, "", "", "", "", docErr
 			}
 			documentID = doc.ID
 		}
-		return pdf, fileName, documentID, onBehalfOf, nil
+		return pdf, fileName, documentID, onBehalfOf, strings.TrimSpace(r.FormValue("signer_id")), nil
 	}
 
 	var req struct {
 		DocumentID string `json:"document_id"`
 		OnBehalfOf string `json:"on_behalf_of"`
+		SignerID   string `json:"signer_id"`
 	}
 	if err = decodeJSON(r, &req); err != nil {
-		return nil, "", "", "", err
+		return nil, "", "", "", "", err
 	}
 	if strings.TrimSpace(req.DocumentID) == "" {
-		return nil, "", "", "", badRequest("MISSING_DOCUMENT", "upload a file or supply document_id")
+		return nil, "", "", "", "", badRequest("MISSING_DOCUMENT", "upload a file or supply document_id")
 	}
 
 	pdf, _, title, err := m.store.documentForSigning(r.Context(), tenantID, req.DocumentID)
 	if err != nil {
-		return nil, "", "", "", err
+		return nil, "", "", "", "", err
 	}
 	doc, err := m.store.getDocument(r.Context(), tenantID, req.DocumentID)
 	if err != nil {
-		return nil, "", "", "", err
+		return nil, "", "", "", "", err
 	}
 	fileName = doc.FileName
 	if fileName == "" {
 		fileName = sanitizeFileName(title)
 	}
-	return pdf, fileName, doc.ID, normalizeOrgEtsi(req.OnBehalfOf), nil
+	return pdf, fileName, doc.ID, normalizeOrgEtsi(req.OnBehalfOf), strings.TrimSpace(req.SignerID), nil
+}
+
+// firstNonBlank returns the first value that is not empty after trimming.
+func firstNonBlank(values ...string) string {
+	for _, v := range values {
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func tooLarge(policy Policy) error {

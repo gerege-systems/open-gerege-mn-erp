@@ -28,7 +28,7 @@ import {
   EmptyState,
   Loading,
   PageHeader,
-  describeError,
+  useErrorMessage,
   formatBytes,
 } from "@/components/esign/shared";
 
@@ -45,6 +45,7 @@ type Tab = "sign" | "documents";
 
 export default function EsignPage() {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [tab, setTab] = useState<Tab>("sign");
   const [documents, setDocuments] = useState<EsignDocument[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -54,7 +55,7 @@ export default function EsignPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [signDoc, setSignDoc] = useState<EsignDocument | null>(null);
 
-  const report = useCallback((err: unknown) => setError(describeError(err, t("base.message.error"))), [t]);
+  const report = useCallback((err: unknown) => setError(describe(err, t("base.message.error"))), [t]);
 
   const load = useCallback(async () => {
     try {
@@ -401,6 +402,7 @@ function UploadModal({
   onUploaded: () => Promise<void>;
 }) {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -419,7 +421,7 @@ function UploadModal({
       await esign.upload(file, title);
       await onUploaded();
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     } finally {
       setBusy(false);
     }
@@ -494,6 +496,7 @@ function HSMSignModal({
   onSigned: () => Promise<void>;
 }) {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [phone, setPhone] = useState("");
   const [regNo, setRegNo] = useState("");
   const [cert, setCert] = useState<{ given_name: string; surname: string } | null>(null);
@@ -507,7 +510,7 @@ function HSMSignModal({
     try {
       setCert(await esign.checkCertificate({ phone_no: phone, civil_id: regNo }));
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     } finally {
       setBusy(false);
     }
@@ -527,7 +530,7 @@ function HSMSignModal({
       });
       await onSigned();
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     } finally {
       setBusy(false);
     }

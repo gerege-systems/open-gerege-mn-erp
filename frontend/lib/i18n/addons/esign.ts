@@ -250,6 +250,64 @@ export const esign = {
     mn: "eID Mongolia аппдаа энэ кодыг шалгаад PIN2-оороо гарын үсэг зурна уу.",
     en: "Check this code in your eID Mongolia app, then sign with PIN2.",
   },
+  // ─── Backend error codes ───────────────────────────────────────────────────
+  // The API answers with a machine code and an English message. The code is
+  // what the screens branch on, so it is also what gets translated — otherwise
+  // a Mongolian interface shows an English sentence at exactly the moment
+  // something has gone wrong.
+  "esign.error.NO_SIGNER_IDENTITY": {
+    mn: "Энэ бүртгэл eID Mongolia-тай холбогдоогүй байна. Регистрийн дугаараа оруулна уу.",
+    en: "This account is not linked to eID Mongolia. Enter your registration number.",
+  },
+  "esign.error.SIGNER_NOT_ENROLLED": {
+    mn: "Энэ иргэн eID Mongolia-д гарын үсгийн гэрчилгээ бүртгүүлээгүй байна.",
+    en: "This citizen has no signing certificate registered with eID Mongolia.",
+  },
+  "esign.error.EID_RP_REJECTED": {
+    mn: "Энэ систем eID Mongolia-д гарын үсэг зурах эрхгүй байна. Админтай холбогдоно уу.",
+    en: "This deployment is not authorised to sign with eID Mongolia. Contact your administrator.",
+  },
+  "esign.error.EID_NOT_CONFIGURED": {
+    mn: "eID Mongolia гарын үсэг энэ системд тохируулагдаагүй байна.",
+    en: "eID Mongolia signing is not configured on this deployment.",
+  },
+  "esign.error.EID_UNAVAILABLE": {
+    mn: "eID Mongolia түр хариу өгөхгүй байна. Дахин оролдоно уу.",
+    en: "eID Mongolia is not responding. Please try again.",
+  },
+  "esign.error.FORBIDDEN": {
+    mn: "Танд энэ үйлдлийг хийх эрх алга.",
+    en: "You do not have permission to do this.",
+  },
+  "esign.error.PAYLOAD_TOO_LARGE": { mn: "Файл хэт том байна.", en: "That file is too large." },
+  "esign.error.NOT_A_PDF": { mn: "Энэ файл PDF биш байна.", en: "That file is not a PDF." },
+  "esign.error.TRUNCATED_PDF": {
+    mn: "PDF файл гэмтсэн эсвэл дутуу байна.",
+    en: "The PDF appears to be truncated or corrupt.",
+  },
+  "esign.error.INVALID_SIGNER": {
+    mn: "Регистрийн дугаар буруу байна.",
+    en: "That registration number is not valid.",
+  },
+  "esign.error.ALREADY_SIGNED": {
+    mn: "Энэ баримт аль хэдийн баталгаажсан байна.",
+    en: "This document is already signed.",
+  },
+
+  // ─── Signer identity ───────────────────────────────────────────────────────
+  "esign.view.signer_identity": { mn: "Гарын үсэг зурах хүн", en: "Who is signing" },
+  "esign.field.signer_id": { mn: "Регистрийн дугаар", en: "Registration number" },
+  "esign.field.signer_id_placeholder": { mn: "ж: УА00112233", en: "e.g. УА00112233" },
+  "esign.message.signer_id_hint": {
+    mn: "eID Mongolia-д бүртгэлтэй регистрийн дугаараа оруулна уу — баталгаажуулах хүсэлт тухайн хүний утас руу очно.",
+    en: "Enter the registration number registered with eID Mongolia — the approval request goes to that person's phone.",
+  },
+  "esign.message.signer_id_link_hint": {
+    mn: "eID-ээр нэвтэрвэл дараагийн удаа автоматаар танигдана.",
+    en: "Sign in with eID and it will be recognised automatically next time.",
+  },
+  "esign.action.continue_signing": { mn: "Үргэлжлүүлэх", en: "Continue" },
+
   "esign.message.sign_success": { mn: "Гарын үсэг амжилттай зурлаа", en: "The document is signed" },
   "esign.message.sign_expired": {
     mn: "Хугацаа дууслаа. Дахин эхлүүлнэ үү.",

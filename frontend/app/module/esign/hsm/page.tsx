@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Plug, ServerCog, XCircle } from "lucide-react";
 import { esign, type HSMSettings, type Probe } from "@/lib/esign";
 import { useI18n } from "@/lib/i18n";
-import { Banner, Card, Loading, PageHeader, describeError } from "@/components/esign/shared";
+import { Banner, Card, Loading, PageHeader, useErrorMessage } from "@/components/esign/shared";
 
 /**
  * The HSM connection.
@@ -17,6 +17,7 @@ import { Banner, Card, Loading, PageHeader, describeError } from "@/components/e
  */
 export default function EsignHSMPage() {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [hsm, setHsm] = useState<HSMSettings | null>(null);
   const [probe, setProbe] = useState<Probe | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,7 +31,7 @@ export default function EsignHSMPage() {
         setHsm(settings.hsm);
         setProbe(settings.hsm.last_probe ?? null);
       })
-      .catch((err) => setError(describeError(err, t("base.message.error"))))
+      .catch((err) => setError(describe(err, t("base.message.error"))))
       .finally(() => setLoading(false));
   }, [t]);
 
@@ -40,7 +41,7 @@ export default function EsignHSMPage() {
     try {
       setProbe(await esign.testHSM());
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     } finally {
       setTesting(false);
     }

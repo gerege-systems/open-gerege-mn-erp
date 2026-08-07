@@ -11,7 +11,7 @@ import {
   OutcomeBadge,
   PageHeader,
   Pager,
-  describeError,
+  useErrorMessage,
 } from "@/components/esign/shared";
 
 const PAGE_SIZE = 50;
@@ -26,6 +26,7 @@ const PAGE_SIZE = 50;
  */
 export default function EsignLogsPage() {
   const { t } = useI18n();
+  const describe = useErrorMessage();
   const [entries, setEntries] = useState<SignatureLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -43,7 +44,7 @@ export default function EsignLogsPage() {
         setTotal(page.total);
         setOffset(nextOffset);
       } catch (err) {
-        setError(describeError(err, t("base.message.error")));
+        setError(describe(err, t("base.message.error")));
       } finally {
         setLoading(false);
       }
@@ -72,7 +73,7 @@ export default function EsignLogsPage() {
     try {
       saveBlob(await esign.exportLogs(filter), "esign-signature-log.csv");
     } catch (err) {
-      setError(describeError(err, t("base.message.error")));
+      setError(describe(err, t("base.message.error")));
     }
   };
 

@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Smartphone,
   Upload,
+  UserRound,
 } from "lucide-react";
 import {
   esign,
@@ -19,7 +20,7 @@ import {
   type SignSession,
 } from "@/lib/esign";
 import { useI18n } from "@/lib/i18n";
-import { describeError } from "./shared";
+import { errorCode, useErrorMessage } from "./shared";
 
 /**
  * Citizen PDF signing with eID Mongolia (PIN2).
@@ -35,6 +36,10 @@ import { describeError } from "./shared";
 type Phase =
   | { kind: "idle" }
   | { kind: "uploading"; filename: string; orgName?: string }
+  // The account is not linked to eID, so who signs has to be asked rather than
+  // inferred. The chosen file is carried through so the citizen does not have
+  // to pick it again after answering.
+  | { kind: "identity"; file: File; orgName?: string; message: string }
   | { kind: "waiting"; session: SignSession; orgName?: string }
   | { kind: "completed"; session: SignSession; orgName?: string }
   | { kind: "error"; message: string };
@@ -61,8 +66,13 @@ const POLL_PAUSE_MS = 1500;
 
 export default function EidSignView({ onSigned }: { onSigned?: () => void }) {
   const { t, locale } = useI18n();
+  const describe = useErrorMessage();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [orgEtsi, setOrgEtsi] = useState("");
+  // Kept for the session only, never persisted: it is a national identifier,
+  // and it exists here purely so a citizen signing several documents does not
+  // retype it each time.
+  const [signerId, setSignerId] = useState("");
   const [orgs, setOrgs] = useState<Representation[]>([]);
   const [orgsLoading, setOrgsLoading] = useState(true);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -155,15 +165,27 @@ export default function EidSignView({ onSigned }: { onSigned?: () => void }) {
     const selected = orgs.find((org) => org.org_etsi === orgEtsi);
     const orgName = selected ? orgLabel(selected) : undefined;
 
+    await start(file, orgName, signerId);
+  }
+
+  /** Starts a ceremony, asking who signs when the account cannot say. */
+  async function start(file: File, orgName: string | undefined, signer: string) {
     cancelled.current = false;
     setPhase({ kind: "uploading", filename: file.name, orgName });
     try {
-      const session = await esign.signFile(file, orgEtsi || undefined);
+      const session = await esign.signFile(file, orgEtsi || undefined, signer.trim() || undefined);
       if (cancelled.current) return;
       setPhase({ kind: "waiting", session, orgName });
       void watch(session, orgName);
     } catch (err) {
-      setPhase({ kind: "error", message: describeError(err, t("esign.message.sign_failed")) });
+      const code = errorCode(err);
+      // Not a dead end: the API takes an explicit signer, so ask for one and
+      // keep the file rather than making the citizen start over.
+      if (code === "NO_SIGNER_IDENTITY" || code === "INVALID_SIGNER") {
+        setPhase({ kind: "identity", file, orgName, message: describe(err) });
+        return;
+      }
+      setPhase({ kind: "error", message: describe(err, t("esign.message.sign_failed")) });
     }
   }
 
@@ -188,7 +210,7 @@ export default function EidSignView({ onSigned }: { onSigned?: () => void }) {
       const blob = await esign.downloadSigned(session.session_id);
       saveBlob(blob, session.filename.replace(/\.pdf$/i, "") + "-signed.pdf");
     } catch (err) {
-      setPhase({ kind: "error", message: describeError(err, t("esign.message.error_download_short")) });
+      setPhase({ kind: "error", message: describe(err, t("esign.message.error_download_short")) });
     }
   }
 
@@ -253,6 +275,64 @@ export default function EidSignView({ onSigned }: { onSigned?: () => void }) {
             </button>
             <p className="text-xs text-slate-500 mt-3">{t("esign.message.pdf_only")}</p>
           </div>
+        </section>
+      )}
+
+      {phase.kind === "identity" && (
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm">
+          <header className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+            <UserRound className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-sm font-bold text-slate-800">{t("esign.view.signer_identity")}</h2>
+          </header>
+
+          <form
+            className="px-4 py-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (signerId.trim()) void start(phase.file, phase.orgName, signerId);
+            }}
+          >
+            <p className="text-sm text-slate-600 max-w-md mx-auto text-center">{phase.message}</p>
+
+            <div className="max-w-sm mx-auto mt-5">
+              <label htmlFor="esign-signer-id" className="block text-xs font-semibold text-slate-700 mb-1">
+                {t("esign.field.signer_id")} *
+              </label>
+              <input
+                id="esign-signer-id"
+                value={signerId}
+                onChange={(event) => setSignerId(event.target.value.toUpperCase())}
+                placeholder={t("esign.field.signer_id_placeholder")}
+                autoFocus
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              />
+              <p className="text-xs text-slate-500 mt-2">{t("esign.message.signer_id_hint")}</p>
+              <p className="text-xs text-slate-400 mt-1">{t("esign.message.signer_id_link_hint")}</p>
+
+              <p className="text-xs text-slate-500 mt-4 inline-flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                {phase.file.name}
+              </p>
+            </div>
+
+            <div className="mt-5 flex gap-2.5 justify-center flex-wrap">
+              <button
+                type="submit"
+                disabled={!signerId.trim()}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-lg"
+              >
+                {t("esign.action.continue_signing")}
+              </button>
+              <button
+                type="button"
+                onClick={reset}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg inline-flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {t("base.action.cancel")}
+              </button>
+            </div>
+          </form>
         </section>
       )}
 

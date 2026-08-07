@@ -330,11 +330,17 @@ export const esign = {
     return (await readJSON<SignSession>(res)) as SignSession;
   },
 
-  /** Starts a ceremony for a document already in the store. */
-  signDocument: (documentId: string, onBehalfOf?: string) =>
+  /**
+   * Starts a ceremony for a document already in the store.
+   *
+   * signerId names the citizen when the account is not linked to eID. It goes
+   * in the body rather than a form field because this route is JSON — the
+   * multipart form value the upload path uses is not readable here.
+   */
+  signDocument: (documentId: string, onBehalfOf?: string, signerId?: string) =>
     request<SignSession>("/esign/sign/init", {
       method: "POST",
-      body: JSON.stringify({ document_id: documentId, on_behalf_of: onBehalfOf }),
+      body: JSON.stringify({ document_id: documentId, on_behalf_of: onBehalfOf, signer_id: signerId }),
     }),
 
   session: (id: string) => request<SignSession>(`/esign/sign/${id}`),
