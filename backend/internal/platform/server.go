@@ -42,7 +42,7 @@ import (
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/config"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/dan"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eid"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidsign"
+	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidmongolia"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/gerege"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/integration"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/mailer"
@@ -89,6 +89,7 @@ type Server struct {
 	productsMod    *products.Module
 	inventoryMod   *inventory.Module
 	esignMod       *esign.Module
+	eidMN          *eidmongolia.Service
 }
 
 func NewServer(db *pgxpool.Pool, catalogPath string) (*Server, error) {
@@ -150,7 +151,11 @@ func NewServer(db *pgxpool.Pool, catalogPath string) (*Server, error) {
 	billingMod := billing.New(db)
 	documentsMod := documents.New(db)
 	govMod := gov_services.New(db)
-	esignMod := esign.New(db, gerege.NewEsignService(), eidsign.New())
+	eidMN, err := eidmongolia.New(db)
+	if err != nil {
+		return nil, fmt.Errorf("eID Mongolia service: %w", err)
+	}
+	esignMod := esign.New(db, gerege.NewEsignService(), eidMN)
 
 	// Instantiate Async Mailer Queue
 	syncMailer := mailer.NewSyncOTPMailer(os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"), os.Getenv("SMTP_FROM"), os.Getenv("SMTP_PASSWORD"))
@@ -184,6 +189,7 @@ func NewServer(db *pgxpool.Pool, catalogPath string) (*Server, error) {
 		productsMod:    productsMod,
 		inventoryMod:   inventoryMod,
 		esignMod:       esignMod,
+		eidMN:          eidMN,
 	}
 
 	s.setupRoutes()
@@ -196,6 +202,7 @@ func NewServer(db *pgxpool.Pool, catalogPath string) (*Server, error) {
 // cancelled at shutdown.
 func (s *Server) StartBackgroundJobs(ctx context.Context) {
 	s.esignMod.StartHousekeeping(ctx)
+	s.eidMN.StartHousekeeping(ctx)
 }
 
 func (s *Server) Router() *chi.Mux {
@@ -613,7 +620,7 @@ func (s *Server) linkEIDIdentity(ctx context.Context, userID string, identity *e
 	if subject == "" {
 		return
 	}
-	personEtsi := eidsign.PersonEtsiFor(subject)
+	personEtsi := eidmongolia.PersonEtsi(subject)
 
 	// The conflict target is person_etsi as well as user_id: one eID citizen
 	// resolves to one ERP account, and a second account claiming the same

@@ -24,7 +24,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/audit"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidsign"
+	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidmongolia"
 )
 
 func (m *Module) listBatchesHandler(w http.ResponseWriter, r *http.Request) {
@@ -215,34 +215,30 @@ func (m *Module) startBatchItem(r *http.Request, tenantID string, actor Actor, i
 	if err != nil {
 		return nil, err
 	}
-	sessionID, err := newSessionID()
-	if err != nil {
-		return nil, err
-	}
 
-	started, err := m.eid.Sign(r.Context(), eidsign.SignRequest{
-		PersonEtsi:     actor.Etsi,
-		DocumentNumber: actor.DocumentNumber,
-		Digest:         eidsign.DigestOf(pdf),
-		DisplayText:    eidsign.DisplayText(item.FileName),
-		FileName:       item.FileName,
+	// The library issues the session id and holds the document for the life of
+	// the ceremony, so a batch item is started exactly like a single signature.
+	started, err := m.eid.SignPDF(r.Context(), eidmongolia.SignRequest{
+		RegNo:    civilIDFromEtsi(actor.Etsi),
+		FullName: actor.FullName,
+		FileName: item.FileName,
+		PDF:      pdf,
 	})
 	if err != nil {
 		return nil, translateEIDError(err)
 	}
 
 	session, err := m.store.createSession(r.Context(), newSession{
-		ID:               sessionID,
+		ID:               started.SessionID,
 		TenantID:         tenantID,
 		DocumentID:       item.DocumentID,
 		EIDSessionID:     started.SessionID,
-		FileName:         item.FileName,
-		DocumentHash:     hexDigest(pdf),
+		FileName:         started.Filename,
+		DocumentHash:     started.DocumentHash,
 		VerificationCode: started.VerificationCode,
 		SignerUserID:     actor.UserID,
 		SignerEtsi:       actor.Etsi,
 		SignerName:       actor.FullName,
-		OriginalPDF:      pdf,
 	})
 	if err != nil {
 		return nil, err
@@ -250,7 +246,7 @@ func (m *Module) startBatchItem(r *http.Request, tenantID string, actor Actor, i
 
 	m.log(r, logEntry{
 		TenantID: tenantID, DocumentID: item.DocumentID, DocumentTitle: item.DocumentTitle,
-		SessionID: sessionID, Provider: ProviderEID, Action: ActionBatchSign, Outcome: OutcomeOK,
+		SessionID: started.SessionID, Provider: ProviderEID, Action: ActionBatchSign, Outcome: OutcomeOK,
 		RegNo: actor.Etsi, ActorUserID: actor.UserID,
 	})
 	return session, nil
@@ -269,7 +265,7 @@ func (m *Module) settleRunningItems(r *http.Request, tenantID string, actor Acto
 			continue
 		}
 		if session.State == SessionPending {
-			settled, err := m.reconcile(r, tenantID, actor, session)
+			settled, err := m.settle(r, tenantID, actor, session)
 			if err != nil {
 				continue
 			}

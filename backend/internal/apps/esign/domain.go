@@ -113,12 +113,6 @@ const (
 	// person reaching for their phone.
 	sessionTTL = 20 * time.Minute
 
-	// pollWindow is how long a status request may block waiting on eID before
-	// answering "still running". It sits under the API's write deadline — see
-	// cmd/api — because a request that outlasts it is closed with no response
-	// written and the browser gets the proxy's 502 page instead.
-	pollWindow = 20 * time.Second
-
 	// logPageSize is the default page for the signature log.
 	logPageSize = 50
 	maxPageSize = 200

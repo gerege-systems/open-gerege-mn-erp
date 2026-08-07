@@ -134,16 +134,11 @@ func TestPolicyNormalizeRejectsNonsense(t *testing.T) {
 }
 
 func TestSessionIDPatternMatchesTheGenerator(t *testing.T) {
-	// The browser refuses to poll an id that fails this pattern, so the
-	// generator and the guard have to agree.
-	for i := 0; i < 50; i++ {
-		id, err := newSessionID()
-		if err != nil {
-			t.Fatalf("newSessionID: %v", err)
-		}
-		if !sessionIDPattern.MatchString(id) {
-			t.Fatalf("generated id %q does not match the client-side guard", id)
-		}
+	// Session ids are now issued by the shared signing library (its randID:
+	// 16 random bytes, hex-encoded). This guard has to keep accepting that
+	// shape, because the browser refuses to poll an id that fails it.
+	if !sessionIDPattern.MatchString("8d3f2a86ab09dfbf73bf96b1badfc404") {
+		t.Error("the guard rejects the id format the signing library issues")
 	}
 
 	for _, bad := range []string{

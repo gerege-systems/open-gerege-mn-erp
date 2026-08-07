@@ -233,7 +233,6 @@ type newSession struct {
 	SignerName       string
 	OnBehalfOfEtsi   string
 	OnBehalfOfName   string
-	OriginalPDF      []byte
 }
 
 func (s *store) createSession(ctx context.Context, in newSession) (*SignSession, error) {
@@ -241,14 +240,14 @@ func (s *store) createSession(ctx context.Context, in newSession) (*SignSession,
 		`INSERT INTO esign_sign_sessions
 		     (id, tenant_id, document_id, provider, eid_session_id, state, file_name,
 		      document_hash, verification_code, signer_user_id, signer_etsi, signer_name,
-		      on_behalf_of_etsi, on_behalf_of_name, original_pdf, expires_at)
-		 VALUES ($1, $2, $3, 'EID', $4, 'pending', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		      on_behalf_of_etsi, on_behalf_of_name, expires_at)
+		 VALUES ($1, $2, $3, 'EID', $4, 'pending', $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 RETURNING `+sessionColumns,
 		in.ID, in.TenantID, nullable(in.DocumentID), nullable(in.EIDSessionID),
 		in.FileName, in.DocumentHash, nullable(in.VerificationCode),
 		nullable(in.SignerUserID), nullable(in.SignerEtsi), nullable(in.SignerName),
 		nullable(in.OnBehalfOfEtsi), nullable(in.OnBehalfOfName),
-		in.OriginalPDF, time.Now().Add(sessionTTL)))
+		time.Now().Add(sessionTTL)))
 }
 
 func (s *store) getSession(ctx context.Context, tenantID, id string) (*SignSession, error) {
@@ -258,25 +257,6 @@ func (s *store) getSession(ctx context.Context, tenantID, id string) (*SignSessi
 		return nil, notFound("signing session not found")
 	}
 	return session, err
-}
-
-// sessionUpstreamID reads the eID-side id and the bytes the citizen approved.
-func (s *store) sessionUpstream(ctx context.Context, tenantID, id string) (string, []byte, error) {
-	var eidID *string
-	var pdf []byte
-	err := s.db.QueryRow(ctx,
-		`SELECT eid_session_id, original_pdf FROM esign_sign_sessions
-		 WHERE id = $1 AND tenant_id = $2`, id, tenantID).Scan(&eidID, &pdf)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil, notFound("signing session not found")
-	}
-	if err != nil {
-		return "", nil, err
-	}
-	if eidID == nil {
-		return "", pdf, nil
-	}
-	return *eidID, pdf, nil
 }
 
 type sessionCompletion struct {

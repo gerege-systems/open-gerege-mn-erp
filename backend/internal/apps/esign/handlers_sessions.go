@@ -3,29 +3,24 @@
  * Copyright (c) 2026 Gerege Systems Development Team & Claude AI
  * Distributed under the Apache 2.0 License.
  *
- * eID Mongolia qualified remote signing. The ceremony is asynchronous because
- * the signing key never leaves the citizen's phone:
+ * eID Mongolia qualified remote signing:
  *
- *   POST /esign/sign/init      upload, hash, push the PIN2 prompt, return a
- *                              verification code
- *   GET  /esign/sign/{id}      poll until completed / rejected / expired
+ *   POST /esign/sign/init            upload, push the PIN2 prompt, return a
+ *                                    verification code
+ *   GET  /esign/sign/{id}            poll until completed / rejected / expired
  *   GET  /esign/sign/{id}/download   stream the PAdES-signed PDF
  *
- * The signed document is assembled by eID's own doc-signer (the stamp
- * endpoint), which embeds the PKCS#7 together with OCSP and CRL data. This
- * service never holds a signing key.
+ * The ceremony itself belongs to the shared platform library
+ * (internal/platform/eidmongolia over open-gerege-core): it talks to eID, holds
+ * the document, checks session ownership and produces the PAdES output. What
+ * lives here is the part the library has no view of — which tenant, which
+ * document, which batch, and the audit trail.
  */
 
 package esign
 
 import (
-	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -35,25 +30,36 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/audit"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidsign"
+	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidmongolia"
 )
 
-// sessionIDPattern is the identifier shape the browser validates before it
-// starts polling. Keeping the server's generator and the client's guard in
-// agreement is what stops a mistyped URL turning into a database round trip.
+// sessionIDPattern matches the identifier the library issues (32 lowercase
+// hex). The browser validates it before polling, so a mistyped URL never
+// reaches the database.
 var sessionIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
-// newSessionID returns a 32-character lowercase hex identifier.
-func newSessionID() (string, error) {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
+// stateFromLibrary maps the library's vocabulary onto the ERP's.
+//
+// The two differ in one word: the library says "running" where this app's
+// stored state and its browser both say "pending". Mapping is cheaper than
+// migrating a CHECK constraint on a live table and rewriting the polling view
+// for a synonym.
+func stateFromLibrary(state string) string {
+	switch state {
+	case eidmongolia.StateRunning:
+		return SessionPending
+	case eidmongolia.StateCompleted:
+		return SessionCompleted
+	case eidmongolia.StateRejected:
+		return SessionRejected
+	case eidmongolia.StateExpired:
+		return SessionExpired
+	default:
+		return SessionFailed
 	}
-	return hex.EncodeToString(buf), nil
 }
 
-// signInitHandler starts a ceremony. It accepts either a multipart upload — a
-// file signed directly, which is the flow the signing view uses — or a JSON
+// signInitHandler starts a ceremony, from either a multipart upload or a JSON
 // body naming a document already in the store.
 func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 	tenantID, actor, ok := m.require(w, r, PermSign)
@@ -85,12 +91,12 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Who signs. A linked eID account needs no input; anything else must name
-	// the citizen explicitly, and a typo there would push the PIN2 prompt at
+	// Who signs. A linked eID account needs no input; anything else names the
+	// citizen explicitly, and a typo there would push the PIN2 prompt at
 	// somebody else's phone, so the value is validated rather than trusted.
 	signerEtsi := actor.Etsi
 	if raw := strings.TrimSpace(r.FormValue("signer_id")); raw != "" {
-		signerEtsi = eidsign.PersonEtsiFor(raw)
+		signerEtsi = eidmongolia.PersonEtsi(raw)
 	}
 	if signerEtsi == "" {
 		writeDomainError(w, badRequest("NO_SIGNER_IDENTITY",
@@ -101,25 +107,14 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, err)
 		return
 	}
+	regNo := civilIDFromEtsi(signerEtsi)
 
-	sessionID, err := newSessionID()
-	if err != nil {
-		writeDomainError(w, err)
-		return
-	}
-
-	// The digest is taken over exactly the bytes stored on the session. That
-	// pairing is the whole integrity claim: what the citizen approves on their
-	// phone is what the stamp endpoint later signs.
-	digest := eidsign.DigestOf(pdf)
-
-	started, err := m.eid.Sign(r.Context(), eidsign.SignRequest{
-		PersonEtsi:     signerEtsi,
-		DocumentNumber: actor.DocumentNumber,
-		Digest:         digest,
-		DisplayText:    eidsign.DisplayText(fileName),
-		FileName:       fileName,
-		OnBehalfOf:     onBehalfOf,
+	started, err := m.eid.SignPDF(r.Context(), eidmongolia.SignRequest{
+		RegNo:         regNo,
+		FullName:      actor.FullName,
+		FileName:      fileName,
+		PDF:           pdf,
+		OnBehalfOfOrg: onBehalfOf,
 	})
 	if err != nil {
 		m.log(r, logEntry{
@@ -131,19 +126,20 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The ERP-side record. The document itself stays with the library for the
+	// life of the ceremony, so this row is metadata only.
 	session, err := m.store.createSession(r.Context(), newSession{
-		ID:               sessionID,
+		ID:               started.SessionID,
 		TenantID:         tenantID,
 		DocumentID:       documentID,
 		EIDSessionID:     started.SessionID,
-		FileName:         fileName,
-		DocumentHash:     hexDigest(pdf),
+		FileName:         started.Filename,
+		DocumentHash:     started.DocumentHash,
 		VerificationCode: started.VerificationCode,
 		SignerUserID:     actor.UserID,
 		SignerEtsi:       signerEtsi,
 		SignerName:       actor.FullName,
 		OnBehalfOfEtsi:   onBehalfOf,
-		OriginalPDF:      pdf,
 	})
 	if err != nil {
 		writeDomainError(w, err)
@@ -151,12 +147,12 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.log(r, logEntry{
-		TenantID: tenantID, DocumentID: documentID, SessionID: sessionID,
+		TenantID: tenantID, DocumentID: documentID, SessionID: started.SessionID,
 		Provider: ProviderEID, Action: ActionSignStart, Outcome: OutcomeOK,
 		RegNo: signerEtsi, ActorUserID: actor.UserID,
 	})
 	audit.Record(r.Context(), tenantID, actor.UserID, "esign.sign_started", "esign", map[string]any{
-		"session_id": sessionID, "document_id": documentID, "on_behalf_of": onBehalfOf,
+		"session_id": started.SessionID, "document_id": documentID, "on_behalf_of": onBehalfOf,
 	})
 
 	writeJSON(w, http.StatusOK, session)
@@ -164,16 +160,10 @@ func (m *Module) signInitHandler(w http.ResponseWriter, r *http.Request) {
 
 // readSignInput accepts either shape of request and returns the bytes to sign.
 func (m *Module) readSignInput(r *http.Request, tenantID string, policy Policy) (pdf []byte, fileName, documentID, onBehalfOf string, err error) {
-	contentType := r.Header.Get("Content-Type")
-
-	if strings.HasPrefix(contentType, "multipart/form-data") {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		r.Body = http.MaxBytesReader(nil, r.Body, maxUploadBody)
 		if parseErr := r.ParseMultipartForm(8 << 20); parseErr != nil {
-			return nil, "", "", "", &Error{
-				Code:    "PAYLOAD_TOO_LARGE",
-				Message: "the upload exceeds the " + strconv.Itoa(policy.MaxUploadMB) + "MB limit",
-				Status:  http.StatusRequestEntityTooLarge,
-			}
+			return nil, "", "", "", tooLarge(policy)
 		}
 		file, header, formErr := r.FormFile("file")
 		if formErr != nil {
@@ -186,11 +176,7 @@ func (m *Module) readSignInput(r *http.Request, tenantID string, policy Policy) 
 			return nil, "", "", "", badRequest("UNREADABLE_FILE", "the uploaded file could not be read")
 		}
 		if len(pdf) > policy.MaxUploadMB<<20 {
-			return nil, "", "", "", &Error{
-				Code:    "PAYLOAD_TOO_LARGE",
-				Message: "the PDF exceeds the " + strconv.Itoa(policy.MaxUploadMB) + "MB limit",
-				Status:  http.StatusRequestEntityTooLarge,
-			}
+			return nil, "", "", "", tooLarge(policy)
 		}
 		if err = validatePDF(pdf); err != nil {
 			return nil, "", "", "", err
@@ -218,8 +204,7 @@ func (m *Module) readSignInput(r *http.Request, tenantID string, policy Policy) 
 		return nil, "", "", "", err
 	}
 	if strings.TrimSpace(req.DocumentID) == "" {
-		return nil, "", "", "", badRequest("MISSING_DOCUMENT",
-			"upload a file or supply document_id")
+		return nil, "", "", "", badRequest("MISSING_DOCUMENT", "upload a file or supply document_id")
 	}
 
 	pdf, _, title, err := m.store.documentForSigning(r.Context(), tenantID, req.DocumentID)
@@ -237,8 +222,16 @@ func (m *Module) readSignInput(r *http.Request, tenantID string, policy Policy) 
 	return pdf, fileName, doc.ID, normalizeOrgEtsi(req.OnBehalfOf), nil
 }
 
-// signStatusHandler is what the browser polls. It reconciles our session with
-// eID's on every call: eID is authoritative, and this row is a cache of it.
+func tooLarge(policy Policy) error {
+	return &Error{
+		Code:    "PAYLOAD_TOO_LARGE",
+		Message: "the PDF exceeds the " + strconv.Itoa(policy.MaxUploadMB) + "MB limit",
+		Status:  http.StatusRequestEntityTooLarge,
+	}
+}
+
+// signStatusHandler is what the browser polls. The library is authoritative;
+// the stored row is a cache of it kept for the log and the batch view.
 func (m *Module) signStatusHandler(w http.ResponseWriter, r *http.Request) {
 	tenantID, actor, ok := m.require(w, r, PermSign)
 	if !ok {
@@ -255,118 +248,86 @@ func (m *Module) signStatusHandler(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, err)
 		return
 	}
-	// A terminal session is a settled fact; re-asking eID about it would only
-	// add latency to a poll that has already finished.
 	if session.State != SessionPending {
+		// Terminal is a settled fact; re-asking would only add latency.
 		writeJSON(w, http.StatusOK, session)
 		return
 	}
 
-	settled, err := m.reconcile(r, tenantID, actor, session)
+	settled, err := m.settle(r, tenantID, actor, session)
 	if err != nil {
-		// A transient upstream failure must not fail the poll — the browser
-		// treats a non-answer as "keep waiting", which is the correct
-		// behaviour for a ceremony that is still open.
-		slog.Warn("esign: could not reconcile signing session", "session_id", id, "error", err)
+		// A transient upstream failure is not a verdict — the ceremony is still
+		// open on the citizen's phone, and the browser treats an unchanged
+		// answer as "keep waiting", which is correct.
 		writeJSON(w, http.StatusOK, session)
 		return
 	}
 	writeJSON(w, http.StatusOK, settled)
 }
 
-// reconcile long-polls eID and, on success, stamps and stores the signed PDF.
-func (m *Module) reconcile(r *http.Request, tenantID string, actor Actor, session *SignSession) (*SignSession, error) {
-	eidSessionID, pdf, err := m.store.sessionUpstream(r.Context(), tenantID, session.ID)
+// settle asks the library for the ceremony's state and records the outcome.
+func (m *Module) settle(r *http.Request, tenantID string, actor Actor, session *SignSession) (*SignSession, error) {
+	state, err := m.eid.PollSign(r.Context(), civilIDFromEtsi(session.SignerEtsi), session.ID)
 	if err != nil {
 		return nil, err
 	}
-	if eidSessionID == "" {
+
+	switch mapped := stateFromLibrary(state); mapped {
+	case SessionPending:
 		return session, nil
-	}
 
-	// The long poll is bounded well inside the API's write deadline. A request
-	// that outlives that deadline is closed with nothing written, and the
-	// citizen sees the proxy's 502 page on every check.
-	ctx, cancel := context.WithTimeout(r.Context(), pollWindow+5*time.Second)
-	defer cancel()
-
-	result, err := m.eid.Session(ctx, eidSessionID, pollWindow)
-	if err != nil {
-		if errors.Is(err, eidsign.ErrSessionNotFound) {
-			_ = m.store.failSession(r.Context(), tenantID, session.ID, SessionExpired, "upstream_session_gone")
-			return m.store.getSession(r.Context(), tenantID, session.ID)
+	case SessionCompleted:
+		signed, err := m.eid.DownloadSigned(r.Context(), civilIDFromEtsi(session.SignerEtsi), session.ID)
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
-	}
+		// Pinned to 'pending' so two concurrent pollers cannot both complete
+		// the same ceremony and double-write the document.
+		won, err := m.store.completeSession(r.Context(), tenantID, session.ID, sessionCompletion{
+			SignedPDF: signed.PDF,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if won && session.DocumentID != "" {
+			if err := m.store.markSigned(r.Context(), tenantID, session.DocumentID, signedDocument{
+				Provider:       ProviderEID,
+				SignedPDF:      signed.PDF,
+				SignerName:     session.SignerName,
+				SignerRegNo:    civilIDFromEtsi(session.SignerEtsi),
+				SignerEtsi:     session.SignerEtsi,
+				OnBehalfOfEtsi: session.OnBehalfOfEtsi,
+				OnBehalfOfName: session.OnBehalfOfName,
+				SignedAt:       time.Now(),
+			}); err != nil {
+				return nil, err
+			}
+		}
+		if won {
+			m.log(r, logEntry{
+				TenantID: tenantID, DocumentID: session.DocumentID, SessionID: session.ID,
+				Provider: ProviderEID, Action: ActionSign, Outcome: OutcomeOK,
+				RegNo: session.SignerEtsi, FirstName: session.SignerName,
+				ActorUserID: actor.UserID,
+			})
+			audit.Record(r.Context(), tenantID, actor.UserID, "esign.document_signed", "esign", map[string]any{
+				"session_id": session.ID, "document_id": session.DocumentID, "provider": ProviderEID,
+			})
+		}
 
-	switch result.State {
-	case eidsign.StateRunning:
-		return session, nil
-
-	case eidsign.StateRefused, eidsign.StateExpired, eidsign.StateFailed:
-		state := map[string]string{
-			eidsign.StateRefused: SessionRejected,
-			eidsign.StateExpired: SessionExpired,
-			eidsign.StateFailed:  SessionFailed,
-		}[result.State]
-		reason := strings.ToLower(result.EndResult)
-		if err := m.store.failSession(r.Context(), tenantID, session.ID, state, reason); err != nil {
+	default:
+		if err := m.store.failSession(r.Context(), tenantID, session.ID, mapped, state); err != nil {
 			return nil, err
 		}
 		m.log(r, logEntry{
 			TenantID: tenantID, DocumentID: session.DocumentID, SessionID: session.ID,
 			Provider: ProviderEID, Action: ActionSign,
-			Outcome:     map[string]string{SessionRejected: OutcomeRejected, SessionExpired: OutcomeExpired, SessionFailed: OutcomeFailed}[state],
-			RegNo:       session.SignerEtsi,
-			ActorUserID: actor.UserID, Detail: result.EndResult,
-		})
-		return m.store.getSession(r.Context(), tenantID, session.ID)
-	}
-
-	// COMPLETE. Hand eID back the exact bytes whose digest was approved and
-	// let its doc-signer produce the PAdES document.
-	signed, err := m.eid.Stamp(r.Context(), eidSessionID, session.FileName, pdf)
-	if err != nil {
-		return nil, err
-	}
-
-	won, err := m.store.completeSession(r.Context(), tenantID, session.ID, sessionCompletion{
-		SignedPDF:          signed,
-		CertificateLevel:   result.CertificateLevel,
-		SignatureAlgorithm: result.SignatureAlgorithm,
-		OnBehalfOfEtsi:     result.OnBehalfOfEtsi,
-		OnBehalfOfName:     result.OnBehalfOfName,
-	})
-	if err != nil {
-		return nil, err
-	}
-	// Two pollers can race here. Only the one that flipped the row writes the
-	// document and the log, so a signature is never recorded twice.
-	if won && session.DocumentID != "" {
-		if err := m.store.markSigned(r.Context(), tenantID, session.DocumentID, signedDocument{
-			Provider:         ProviderEID,
-			SignedPDF:        signed,
-			SignerName:       session.SignerName,
-			SignerRegNo:      civilIDFromEtsi(session.SignerEtsi),
-			SignerEtsi:       session.SignerEtsi,
-			OnBehalfOfEtsi:   result.OnBehalfOfEtsi,
-			OnBehalfOfName:   result.OnBehalfOfName,
-			CertificateLevel: result.CertificateLevel,
-			SignedAt:         time.Now(),
-		}); err != nil {
-			return nil, err
-		}
-	}
-	if won {
-		m.log(r, logEntry{
-			TenantID: tenantID, DocumentID: session.DocumentID, SessionID: session.ID,
-			Provider: ProviderEID, Action: ActionSign, Outcome: OutcomeOK,
-			RegNo: session.SignerEtsi, FirstName: session.SignerName,
-			ActorUserID: actor.UserID, Detail: result.CertificateLevel,
-		})
-		audit.Record(r.Context(), tenantID, actor.UserID, "esign.document_signed", "esign", map[string]any{
-			"session_id": session.ID, "document_id": session.DocumentID,
-			"provider": ProviderEID, "certificate_level": result.CertificateLevel,
+			Outcome: map[string]string{
+				SessionRejected: OutcomeRejected,
+				SessionExpired:  OutcomeExpired,
+				SessionFailed:   OutcomeFailed,
+			}[mapped],
+			RegNo: session.SignerEtsi, ActorUserID: actor.UserID, Detail: state,
 		})
 	}
 	return m.store.getSession(r.Context(), tenantID, session.ID)
@@ -396,8 +357,8 @@ func (m *Module) signDownloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // signCancelHandler abandons a ceremony from this side. eID's own session is
-// left to expire: there is no cancel on the RP API, and the citizen's phone
-// simply stops mattering once we refuse the result.
+// left to expire — the relying-party API has no cancel, and the citizen's phone
+// stops mattering once the result is refused.
 func (m *Module) signCancelHandler(w http.ResponseWriter, r *http.Request) {
 	tenantID, actor, ok := m.require(w, r, PermSign)
 	if !ok {
@@ -424,10 +385,7 @@ func (m *Module) signCancelHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, session)
 }
 
-// organizationsHandler lists the organisations the signer may act for, so the
-// signing view can offer "sign on behalf of". Representation rights are read
-// live from the national registry rather than from a certificate, because a
-// director who resigned yesterday still holds yesterday's certificate.
+// organizationsHandler lists the organisations the signer may act for.
 func (m *Module) organizationsHandler(w http.ResponseWriter, r *http.Request) {
 	_, actor, ok := m.require(w, r, PermSign)
 	if !ok {
@@ -440,9 +398,8 @@ func (m *Module) organizationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orgs, err := m.eid.Representations(r.Context(), actor.Etsi)
 	if err != nil {
-		// The dropdown is an enhancement; failing it would block signing
-		// entirely for a permission the tenant may not even hold.
-		slog.Warn("esign: could not list representations", "error", err)
+		// The dropdown is an enhancement; failing it would block signing for a
+		// permission the relying party may not even hold.
 		writeJSON(w, http.StatusOK, []any{})
 		return
 	}
@@ -451,21 +408,21 @@ func (m *Module) organizationsHandler(w http.ResponseWriter, r *http.Request) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// translateEIDError converts an upstream failure into something a citizen can
-// act on, without leaking the upstream body — which can carry identifiers.
+// translateEIDError turns an upstream failure into something a citizen can act
+// on, without echoing an upstream body that may carry identifiers.
 func translateEIDError(err error) error {
+	msg := strings.ToLower(err.Error())
 	switch {
-	case errors.Is(err, eidsign.ErrNotEnrolled):
+	case strings.Contains(msg, "represent"):
+		return forbidden("you are not registered as a representative of this organisation")
+	case strings.Contains(msg, "not found") || strings.Contains(msg, "enroll"):
 		return &Error{
 			Code:    "SIGNER_NOT_ENROLLED",
 			Message: "this citizen is not enrolled for signing in eID Mongolia",
 			Status:  http.StatusBadRequest,
 		}
-	case errors.Is(err, eidsign.ErrNotRepresentative):
-		return forbidden("you are not registered as a representative of this organisation")
-	case errors.Is(err, eidsign.ErrRPRejected):
-		// An operator problem. Saying "try again" would send the citizen in
-		// circles, so it is named as a configuration fault.
+	case strings.Contains(msg, "401") || strings.Contains(msg, "403") || strings.Contains(msg, "unauthor"):
+		// An operator problem. "Try again" would send the citizen in circles.
 		return &Error{
 			Code:    "EID_RP_REJECTED",
 			Message: "this deployment is not authorised to sign with eID Mongolia; contact your administrator",
@@ -475,7 +432,7 @@ func translateEIDError(err error) error {
 	return upstream("EID_UNAVAILABLE", "eID Mongolia could not start the signature; please try again")
 }
 
-// validateEtsi guards the identifier before it is put in a URL path.
+// validateEtsi guards the identifier before it reaches a URL path.
 var etsiPattern = regexp.MustCompile(`^(PNOMN|NTRMN)-[A-Za-z0-9]{1,32}$`)
 
 func validateEtsi(etsi string) error {
@@ -486,36 +443,17 @@ func validateEtsi(etsi string) error {
 }
 
 func normalizeOrgEtsi(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
+	if strings.TrimSpace(raw) == "" {
 		return ""
 	}
-	return eidsign.OrgEtsiFor(raw)
+	return eidmongolia.OrgEtsi(raw)
 }
 
-// civilIDFromEtsi recovers the bare identifier for display and for the
-// signature log, which predates ETSI identifiers.
+// civilIDFromEtsi recovers the bare identifier, which is both what the library
+// keys session ownership by and what the signature log has always recorded.
 func civilIDFromEtsi(etsi string) string {
 	if idx := strings.Index(etsi, "-"); idx >= 0 {
 		return etsi[idx+1:]
 	}
 	return etsi
-}
-
-// hexDigest is the human-readable form of the same SHA-256 the citizen's
-// device signs. It is shown in the signing view and stored on the session so a
-// document can be matched to its ceremony after the fact.
-func hexDigest(pdf []byte) string {
-	sum := sha256.Sum256(pdf)
-	return hex.EncodeToString(sum[:])
-}
-
-// log records an auditable event. Failures are logged and swallowed: losing an
-// audit row must never fail a signature that has already been made, because
-// the signed document is the record of consequence.
-func (m *Module) log(r *http.Request, entry logEntry) {
-	if err := m.store.recordLog(r.Context(), entry); err != nil {
-		slog.Error("esign: could not write the signature log",
-			"action", entry.Action, "outcome", entry.Outcome, "error", err)
-	}
 }

@@ -36,7 +36,7 @@ import (
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/appregistry"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/auth"
-	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidsign"
+	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/eidmongolia"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/gerege"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/rbac"
 	"github.com/gerege-systems/open-gerege-mn-erp/backend/internal/platform/tenant"
@@ -46,11 +46,11 @@ type Module struct {
 	db    *pgxpool.Pool
 	store *store
 	hsm   *gerege.EsignService
-	eid   eidsign.Client
+	eid   *eidmongolia.Service
 	perms *rbac.SQLPermissionStore
 }
 
-func New(db *pgxpool.Pool, hsm *gerege.EsignService, eid eidsign.Client) *Module {
+func New(db *pgxpool.Pool, hsm *gerege.EsignService, eid *eidmongolia.Service) *Module {
 	m := &Module{
 		db:    db,
 		store: &store{db: db},
@@ -176,6 +176,16 @@ func (m *Module) require(w http.ResponseWriter, r *http.Request, permission stri
 		return "", Actor{}, false
 	}
 	return tenantID, actor, true
+}
+
+// log records an auditable event. Failures are logged and swallowed: losing an
+// audit row must never fail a signature that has already been made, because
+// the signed document is the record of consequence.
+func (m *Module) log(r *http.Request, entry logEntry) {
+	if err := m.store.recordLog(r.Context(), entry); err != nil {
+		slog.Error("esign: could not write the signature log",
+			"action", entry.Action, "outcome", entry.Outcome, "error", err)
+	}
 }
 
 // ─── Responses ───────────────────────────────────────────────────────────────
