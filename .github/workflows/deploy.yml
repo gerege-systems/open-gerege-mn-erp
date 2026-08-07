@@ -1,11 +1,11 @@
-name: Deploy to Production (openerp.gerege.mn)
+name: Deploy to Production (nexus.gerege.mn)
 
 # Lint, tests and builds live in ci.yml — this workflow publishes images for an
 # already-green commit and rolls them out.
 #
 # Required repository secrets:
 #   DEPLOY_SSH_KEY              private key for the deploy user (required)
-#   DEPLOY_HOST                 defaults to openerp.gerege.mn
+#   DEPLOY_HOST                 defaults to nexus.gerege.mn
 #   DEPLOY_USER                 defaults to deploy
 #   DEPLOY_PORT                 defaults to 22
 #   POSTGRES_PASSWORD           database password on the server
@@ -18,7 +18,7 @@ name: Deploy to Production (openerp.gerege.mn)
 #   EID_SIGN_SIGNER_KEY_PEM     its ECDSA private key, PEM (optional)
 #
 # Repository variables:
-#   PUBLIC_ORIGIN               defaults to https://openerp.gerege.mn
+#   PUBLIC_ORIGIN               defaults to https://nexus.gerege.mn
 #   DEMO_MODE                   "true" seeds the demo account and mock connectors
 on:
   push:
@@ -43,7 +43,7 @@ env:
   # Repository variables, not secrets: the `secrets` context is not available
   # in workflow-level env (or in a job name), which fails workflow validation
   # outright — the run never starts.
-  PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN || 'https://openerp.gerege.mn' }}
+  PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN || 'https://nexus.gerege.mn' }}
   # Repository variable (Settings → Variables), not a secret. "true" turns the
   # target into a public demo: seeded demo account plus mock E-ID/DAN/XYP.
   DEMO_MODE: ${{ vars.DEMO_MODE || 'false' }}
@@ -123,7 +123,7 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.DEPLOY_HOST || 'openerp.gerege.mn' }}
+          host: ${{ secrets.DEPLOY_HOST || 'nexus.gerege.mn' }}
           username: ${{ secrets.DEPLOY_USER || 'deploy' }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -157,7 +157,7 @@ jobs:
           EID_MOCK_MODE: ${{ env.EID_MOCK_MODE }}
           EID_JIT_TENANT_SLUG: ${{ env.EID_JIT_TENANT_SLUG }}
         with:
-          host: ${{ secrets.DEPLOY_HOST || 'openerp.gerege.mn' }}
+          host: ${{ secrets.DEPLOY_HOST || 'nexus.gerege.mn' }}
           username: ${{ secrets.DEPLOY_USER || 'deploy' }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -205,7 +205,7 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.DEPLOY_HOST || 'openerp.gerege.mn' }}
+          host: ${{ secrets.DEPLOY_HOST || 'nexus.gerege.mn' }}
           username: ${{ secrets.DEPLOY_USER || 'deploy' }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}

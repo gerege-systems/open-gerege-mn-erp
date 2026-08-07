@@ -217,13 +217,13 @@ npm run dev
 | `DEPLOY_SSH_KEY` | Тийм | Deploy хэрэглэгчийн хувийн түлхүүр. Байхгүй бол rollout алгасана |
 | `POSTGRES_PASSWORD` | Тийм | Сервер дэх өгөгдлийн сангийн нууц үг |
 | `SSO_DEFAULT_CLIENT_SECRET` | Тийм | Production дээр OAuth2 client-д зайлшгүй |
-| `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_PORT` | Үгүй | Анхдагч: `openerp.gerege.mn` / `deploy` / `22` |
-| `PUBLIC_ORIGIN` | Үгүй | Анхдагч: `https://openerp.gerege.mn` |
+| `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_PORT` | Үгүй | Анхдагч: `nexus.gerege.mn` / `deploy` / `22` |
+| `PUBLIC_ORIGIN` | Үгүй | Анхдагч: `https://nexus.gerege.mn` |
 
-> `openerp.gerege.mn` бол Gerege Nexus нэршилд шилжихээс өмнөх **legacy
-> deployment endpoint** бөгөөд одоо ч ажиллаж байна. OIDC issuer, бүртгэлтэй
-> eID/OAuth callback, TLS гэрчилгээ бүгд түүн дээр тогтсон тул шинэ домэйн
-> бэлэн болж, бүртгэлүүд шинэчлэгдэх хүртэл өөрчлөхгүй.
+> Production домэйн нь `nexus.gerege.mn`. Өмнөх `openerp.gerege.mn` домэйныг
+> Gerege Nexus нэршилд шилжихэд орлуулсан. `PUBLIC_ORIGIN` нь CORS, OIDC issuer,
+> eID callback гурвыг нэг дор тодорхойлдог тул түүнийг өөрчлөхөд DNS, TLS
+> гэрчилгээ, issuer-т тулгуурласан client бүр хамт шилжинэ.
 
 Серверт зөвхөн Docker шаардлагатай — эх код ч, Go/Node ч хэрэггүй. Утгуудын
 жишээг [`deploy/.env.prod.example`](deploy/.env.prod.example)-ээс үзнэ үү.

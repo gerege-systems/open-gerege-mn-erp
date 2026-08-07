@@ -5,8 +5,8 @@ this file.
 
 Entries below the rebrand keep the names that were true when they shipped — the
 `open-gerege-mn-erp` repository, the ERP framing, and the `openerp.gerege.mn`
-deployment. A changelog that is edited to match the present tense stops being a
-record, and `openerp.gerege.mn` in particular is still the live endpoint.
+deployment, which has since moved to `nexus.gerege.mn`. A changelog edited to
+match the present tense stops being a record.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -179,7 +179,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Developer portal interface (`/developer/apps`) to register third-party OAuth2 client applications, issue Client IDs and Client Secrets, and manage redirect URIs.
 - **Automated Production Deployment & CI/CD Pipeline ([`openerp.gerege.mn`](.github/workflows/deploy.yml))**:
   - Continuous Integration & Automated Deployment pipeline building GHCR Docker images and deploying to `openerp.gerege.mn`.
-  - Production Multi-Stage Dockerfile ([`deploy/Dockerfile`](deploy/Dockerfile)) and Nginx SSL Reverse Proxy config ([`deploy/nginx/openerp.gerege.mn.conf`](deploy/nginx/openerp.gerege.mn.conf)).
+  - Production Multi-Stage Dockerfile ([`deploy/Dockerfile`](deploy/Dockerfile)) and Nginx SSL Reverse Proxy config (then `deploy/nginx/openerp.gerege.mn.conf`, since renamed to [`deploy/nginx/nexus.gerege.mn.conf`](deploy/nginx/nexus.gerege.mn.conf)).
   - Recursive dependency resolution algorithm with cycle detection and semver validation.
 - **Shared-Schema Multi-Tenancy**:
   - Context-scoped `tenant_id` isolation across all business entities and repositories.
