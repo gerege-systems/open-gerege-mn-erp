@@ -136,24 +136,40 @@ html[data-density="compact"] main { padding-top: 1rem; padding-bottom: 1rem; }
 /* Original Theme preserves the repository's original Odoo-inspired shell. */
 html[data-design="original"] .gerege-topbar { background: #0f172a; border-color: #1e293b; color: white; }
 
-/* The bar is dark here, so its slate utilities are inverted to read against it.
-   Popovers anchored inside it — the user menu, the search results — paint their
-   own light surface, and the inversion has to stop at their edge: recolouring
-   slate-900 to near-white leaves the account name invisible on white. Anything
-   without a colour utility inherits `color: white` from the bar, so the popover
-   also resets that. */
-html[data-design="original"] .gerege-topbar .gerege-topbar-popover { color: var(--gerege-fg); }
-html[data-design="original"] .gerege-topbar
-  :is(.text-slate-900, .text-slate-800):not(.gerege-topbar-popover, .gerege-topbar-popover *) {
-  color: #f8fafc !important;
+/* The bar is dark here, so its slate utilities are inverted to read against it. */
+html[data-design="original"] .gerege-topbar .text-slate-900,
+html[data-design="original"] .gerege-topbar .text-slate-800 { color: #f8fafc !important; }
+html[data-design="original"] .gerege-topbar .text-slate-500,
+html[data-design="original"] .gerege-topbar .text-slate-600 { color: #94a3b8 !important; }
+html[data-design="original"] .gerege-topbar .border-slate-200 { border-color: #334155 !important; }
+
+/* Light surfaces anchored inside that dark bar: the user menu, the search
+   results, and the account button itself once it opens and fills with
+   --gerege-blue-soft. The inversion above would paint their text near-white on
+   near-white, so undo it for them and reset the `color: white` the bar hands
+   down to anything without a colour utility.
+
+   Plain descendant selectors on purpose — one class deeper, so they win on
+   specificity. An earlier attempt scoped the inversion with
+   :not(.x, .x *) instead, whose complex-selector form browsers without
+   Selectors-4 support reject, dropping the whole inversion and taking the
+   bar's own text with it. */
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight { color: var(--gerege-fg); }
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight.text-slate-900,
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight.text-slate-800,
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight .text-slate-900,
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight .text-slate-800 {
+  color: var(--gerege-fg) !important;
 }
-html[data-design="original"] .gerege-topbar
-  :is(.text-slate-500, .text-slate-600):not(.gerege-topbar-popover, .gerege-topbar-popover *) {
-  color: #94a3b8 !important;
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight.text-slate-500,
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight.text-slate-600,
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight .text-slate-500,
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight .text-slate-600 {
+  color: var(--gerege-muted) !important;
 }
-html[data-design="original"] .gerege-topbar
-  .border-slate-200:not(.gerege-topbar-popover, .gerege-topbar-popover *) {
-  border-color: #334155 !important;
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight.border-slate-200,
+html[data-design="original"] .gerege-topbar .gerege-topbar-onlight .border-slate-200 {
+  border-color: var(--gerege-border) !important;
 }
 html[data-design="original"] .original-brand-mark { color: #818cf8; background: #1e293b; }
 html[data-design="original"] .gerege-nav-link-active {

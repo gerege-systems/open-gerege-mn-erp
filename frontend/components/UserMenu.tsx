@@ -56,7 +56,9 @@ export default function UserMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         className={`flex items-center gap-2.5 rounded-full border py-1 pl-1 pr-2.5 transition ${
-          open ? "border-[var(--gerege-blue)] bg-[var(--gerege-blue-soft)]" : "border-slate-200 hover:bg-slate-50"
+          open
+            ? "gerege-topbar-onlight border-[var(--gerege-blue)] bg-[var(--gerege-blue-soft)]"
+            : "border-slate-200 hover:bg-slate-50"
         }`}
       >
         <span className="w-8 h-8 rounded-full bg-[var(--gerege-blue-soft)] text-[var(--gerege-blue)] grid place-items-center text-xs font-bold">
@@ -69,7 +71,7 @@ export default function UserMenu({
       {open && (
         <div
           role="menu"
-          className="gerege-topbar-popover absolute right-0 mt-2 w-[320px] rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden z-50"
+          className="gerege-topbar-onlight absolute right-0 mt-2 w-[320px] rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden z-50"
         >
           <div className="px-4 py-3.5 border-b border-slate-100">
             <p className="text-sm font-semibold text-slate-900 truncate">{user?.name}</p>
