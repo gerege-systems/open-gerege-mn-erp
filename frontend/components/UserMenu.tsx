@@ -24,7 +24,8 @@ export default function UserMenu({
   user: { name?: string; email?: string } | null;
   onLogout: () => void;
 }) {
-  const { t, locale, setLocale } = useI18n();
+  const { t, locale, setLocale, availableLocales } = useI18n();
+  const offeredLocales = LOCALES.filter((option) => availableLocales.includes(option.code));
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,7 +99,7 @@ export default function UserMenu({
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm text-slate-600">{t("base.field.language")}</span>
               <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
-                {LOCALES.map((option) => (
+                {offeredLocales.map((option) => (
                   <button
                     key={option.code}
                     type="button"
