@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -130,7 +131,7 @@ func TestSignMapsUpstreamFailures(t *testing.T) {
 			_, err := newTestClient(srv.URL).Sign(context.Background(), SignRequest{
 				PersonEtsi: "PNOMN-1", Digest: DigestOf([]byte("x")),
 			})
-			if err != tc.want {
+			if !errors.Is(err, tc.want) {
 				t.Errorf("err = %v, want %v", err, tc.want)
 			}
 		})

@@ -17,6 +17,7 @@
 package esign
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -332,19 +333,12 @@ func dedupe(ids []string) []string {
 }
 
 // errorMessage renders a domain error for storage on a batch item without
-// leaking an upstream body.
+// leaking an upstream body. errors.As rather than a type assertion, so a
+// domain error wrapped on its way up still reads as one.
 func errorMessage(err error) string {
 	var domain *Error
-	if ok := asDomain(err, &domain); ok {
+	if errors.As(err, &domain) {
 		return domain.Message
 	}
 	return "the signature could not be started"
-}
-
-func asDomain(err error, target **Error) bool {
-	if domain, ok := err.(*Error); ok {
-		*target = domain
-		return true
-	}
-	return false
 }

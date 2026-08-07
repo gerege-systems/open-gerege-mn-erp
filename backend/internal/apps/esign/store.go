@@ -503,12 +503,13 @@ func (s *store) loadProbe(ctx context.Context, tenantID string) (*Probe, error) 
 	if err != nil {
 		return nil, err
 	}
+	// Best effort: a malformed blob leaves LastProbe nil, which the screen
+	// renders as "not tested yet". Failing here instead would lock an operator
+	// out of the connection screen over a stale record of a past test.
 	var stored struct {
 		LastProbe *Probe `json:"last_probe"`
 	}
-	if err := json.Unmarshal(raw, &stored); err != nil {
-		return nil, nil
-	}
+	_ = json.Unmarshal(raw, &stored)
 	return stored.LastProbe, nil
 }
 

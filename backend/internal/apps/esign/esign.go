@@ -43,12 +43,11 @@ import (
 )
 
 type Module struct {
-	db      *pgxpool.Pool
-	store   *store
-	hsm     *gerege.EsignService
-	eid     eidsign.Client
-	perms   *rbac.SQLPermissionStore
-	baseURL string
+	db    *pgxpool.Pool
+	store *store
+	hsm   *gerege.EsignService
+	eid   eidsign.Client
+	perms *rbac.SQLPermissionStore
 }
 
 func New(db *pgxpool.Pool, hsm *gerege.EsignService, eid eidsign.Client) *Module {
