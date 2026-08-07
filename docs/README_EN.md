@@ -15,6 +15,13 @@ Modules compile into a single Go binary, while a PostgreSQL-backed app
 store decides which apps are active per tenant — module separation without the
 network hops or operational cost of microservices.
 
+**Language policy: Mongolian plus the six official languages of the United
+Nations** — Arabic, Chinese, English, French, Russian, Spanish. Seven in total.
+Mongolian is the source. The documentation exists in all seven; the application
+ships offering Mongolian and English and the rest are switched on per device
+from **Settings → Appearance**. See the
+[translation guide](TRANSLATION_GUIDE.md).
+
 <p>
   <a href="../README.md"><img src="assets/icons/flag-mn.png" width="18" height="18" alt=""> Монгол</a>
   &nbsp;·&nbsp;
@@ -308,6 +315,7 @@ Report vulnerabilities as described in [`SECURITY.md`](../SECURITY.md).
 | [Documentation hub](README.md) | Index of every document and translation |
 | [Architecture specification](ARCHITECTURE_SPECIFICATION.md) | Platform layers and design decisions |
 | [Module authoring guide](MODULE_AUTHORING_GUIDE.md) | How to build a new app module |
+| [Translation guide](TRANSLATION_GUIDE.md) | Language policy, and adding a language with Gemini |
 | [Contributing](../CONTRIBUTING.md) | Contribution workflow |
 | [Security policy](../SECURITY.md) | Reporting vulnerabilities |
 | [Code of conduct](../CODE_OF_CONDUCT.md) | Community standards |

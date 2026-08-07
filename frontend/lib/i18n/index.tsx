@@ -19,6 +19,7 @@ import { integrations } from "./addons/integrations";
 import { inventory } from "./addons/inventory";
 import { products } from "./addons/products";
 import { website } from "./addons/website";
+import { overlays } from "./locales";
 
 export type Locale = "mn" | "ar" | "zh" | "en" | "fr" | "ru" | "es";
 
@@ -171,9 +172,11 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       // Entries are authored with mn and en; the other five locales are filled
       // in progressively, so a lookup is widened to "this locale, maybe".
       const entry = dictionary[key] as (Partial<Record<Locale, string>> & { en: string }) | undefined;
-      // Fall back to the English source term rather than the key, as gettext
-      // does: an untranslated screen reads as English, not as plumbing.
-      let text: string = entry ? entry[locale] || entry.en : key;
+      // Overlay first: that is where the generated and reviewed translations
+      // for the optional languages live. Then the entry's own locale, then the
+      // English source term rather than the key, as gettext does — an
+      // untranslated screen reads as English, not as plumbing.
+      let text: string = overlays[locale]?.[key] || (entry ? entry[locale] || entry.en : key);
       if (vars) {
         for (const [name, replacement] of Object.entries(vars)) {
           text = text.replace(new RegExp(`\\{${name}\\}`, "g"), String(replacement));
